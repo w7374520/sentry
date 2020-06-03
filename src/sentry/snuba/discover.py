@@ -279,6 +279,7 @@ def resolve_column(col):
     Resolve a public schema name to the discover dataset.
     unknown columns are converted into tags expressions.
     """
+    # print("COLUMN", col)
     if col is None:
         return col
     elif isinstance(col, (list, tuple)):

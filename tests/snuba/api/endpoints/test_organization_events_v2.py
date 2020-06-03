@@ -2304,6 +2304,36 @@ class OrganizationEventsV2EndpointTest(APITestCase, SnubaTestCase):
         assert len(data) == 1
         assert data[0]["id"] == "f" * 32
 
+    def test_conditional_filter(self):
+        self.login_as(user=self.user)
+
+        project = self.create_project()
+        self.store_event(
+            data={"event_id": "a" * 32, "timestamp": self.two_min_ago, "fingerprint": ["group_1"]},
+            project_id=project.id,
+        )
+        self.store_event(
+            data={"event_id": "b" * 32, "timestamp": self.two_min_ago, "fingerprint": ["group_1"]},
+            project_id=project.id,
+        )
+
+        with self.feature(
+            {"organizations:discover-basic": True, "organizations:global-views": True}
+        ):
+            response = self.client.get(
+                self.url,
+                format="json",
+                data={"field": ["id"], "query": "id:{} OR id:{}".format("a" * 32, "b" * 32),},
+            )
+
+        assert response.status_code == 200, response.content
+        data = response.data["data"]
+        assert len(data) == 2
+        assert data[0]["id"] == "a" * 32
+        assert data[1]["id"] == "b" * 32
+
+        assert False
+
     def test_context_fields(self):
         self.login_as(user=self.user)
         project = self.create_project()

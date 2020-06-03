@@ -829,6 +829,65 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
             )
         ]
 
+    def test_evans_experiments(self):
+        def print_sb(term):
+            if isinstance(term, SearchFilter):
+                return "{}{}{}".format(term.key.name, term.operator, term.value.raw_value)
+
+            return "({} {} {})".format(
+                print_sb(term.left_term), term.operator, print_sb(term.right_term)
+            )
+
+        def print_res(res):
+            return " AND ".join(print_sb(term) for term in res)
+
+        # result = parse_search_query(
+        #     "user.email:foo@example.com OR user.email:bar@example.com OR user.email:foobar@example.com AND user.email:hello@example.com"
+        # )
+        # print("1", print_sb(result[0]))
+        # T [l, OR, l, OR, l, AND l], 0, 7
+        # BOR IDX 1, L ([l]), R ([l, OR, l, AND, l])
+        #     L: T [l], 0, 1
+        #         -> l
+        #     R: T [l, OR, l, AND, l], 2, 7
+        #         BOR
+
+        # result = parse_search_query(
+        #     "user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com"
+        # )
+        # print("2", print_sb(result[0]))
+
+        result = parse_search_query(
+            "user.email:foo@example.com OR user.email:bar@example.com AND user.email:foobar@example.com OR user.email:hello@example.com"
+        )
+        print("3", print_sb(result[0]))
+
+        # result = parse_search_query(
+        #     "user.email:foo@example.com user.email:bar@example.com OR user.email:foobar@example.com"
+        # )
+        # print("4", print_res(result))
+
+        # result = parse_search_query(
+        #     "user.email:foo@example.com user.email:bar@example.com AND user.email:foobar@example.com"
+        # )
+        # print("5", print_res(result))
+
+        # assert result == [
+        #     SearchBoolean(
+        #         left_term=SearchBoolean(
+        #             left_term=self.term1,
+        #             operator="OR",
+        #             right_term=SearchBoolean(
+        #                 left_term=self.term2, operator="OR", right_term=self.term3,
+        #             ),
+        #         ),
+        #         operator="AND",
+        #         right_term=self.term4,
+        #     )
+        # ]
+
+        assert False
+
     def test_multiple_statements(self):
         assert parse_search_query(
             "user.email:foo@example.com OR user.email:bar@example.com OR user.email:foobar@example.com"
@@ -1317,10 +1376,17 @@ class GetSnubaQueryArgsTest(TestCase):
         result = get_filter("last_seen():2020-04-01T19:34:52+00:00")
         assert result.having == [["last_seen", "=", 1585769692]]
 
-    @pytest.mark.xfail(reason="this breaks issue search so needs to be redone")
-    def test_trace_id(self):
-        result = get_filter("trace:{}".format("a0fa8803753e40fd8124b21eeb2986b5"))
-        assert result.conditions == [["trace", "=", "a0fa8803-753e-40fd-8124-b21eeb2986b5"]]
+    def test_boolean_logic(self):
+        result = get_filter("title:a OR title:b")
+        print("RESULT", result.conditions)
+        assert False
+
+    # Copy all the different paren/boolean tests from above here
+    # Also need some having tests: make sure having can only be combined with AND
+    # - if having buried in logic statement that includes an OR, reject
+    # - multiple having conditions only work with OR
+    # What happens when you combine a:b c:d OR e:f g:h? Are there implicit ANDs?
+    # make sure having + condition returns expected results
 
 
 class ResolveFieldListTest(unittest.TestCase):

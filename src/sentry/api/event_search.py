@@ -352,6 +352,7 @@ class SearchVisitor(NodeVisitor):
 
         def build_boolean_tree_branch(children, start, end, operator):
             index = find_next_operator(children, start, end, operator)
+            print("BRANCH", start, end, operator, index)
             if index is None:
                 return None
             left = build_boolean_tree(children, start, index)
@@ -362,7 +363,9 @@ class SearchVisitor(NodeVisitor):
             if end - start == 1:
                 return children[start]
 
+            print("tree", start, end)
             result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_OR)
+            print("FOUND OR!", result)
             if result is None:
                 result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_AND)
 
@@ -371,6 +374,9 @@ class SearchVisitor(NodeVisitor):
         children = self.flatten(children)
         children = self.remove_optional_nodes(children)
         children = self.remove_space(children)
+
+        for i, c in enumerate(children):
+            print("C", i, c)
 
         return [build_boolean_tree(children, 0, len(children))]
 
@@ -700,6 +706,21 @@ def convert_aggregate_filter_to_snuba_query(aggregate_filter, params):
     return condition
 
 
+def convert_search_boolean_to_snuba_query(term, params=None):
+    def convert_to_function(condition):
+        return ["equals", [condition[0], "'{}'".format(condition[2])]]
+
+    print("LEFT", term.left_term)
+    print("RIGHT", term.right_term)
+    left_filter = convert_search_filter_to_snuba_query(term.left_term)
+    right_filter = convert_search_filter_to_snuba_query(term.right_term)
+    function = "or"
+    return (
+        [[function, [convert_to_function(left_filter), convert_to_function(right_filter)]], "=", 1],
+        None,
+    )
+
+
 def convert_search_filter_to_snuba_query(search_filter, key=None):
     name = search_filter.key.name if key is None else key
     value = search_filter.value.value
@@ -814,7 +835,7 @@ def get_filter(query=None, params=None):
     parsed_terms = []
     if query is not None:
         try:
-            parsed_terms = parse_search_query(query, allow_boolean=False)
+            parsed_terms = parse_search_query(query, allow_boolean=True)
         except ParseError as e:
             raise InvalidSearchQuery(
                 u"Parse error: {} (column {:d})".format(e.expr.name, e.column())
@@ -912,6 +933,12 @@ def get_filter(query=None, params=None):
                 converted_filter = convert_search_filter_to_snuba_query(term)
                 if converted_filter:
                     kwargs["conditions"].append(converted_filter)
+        elif isinstance(term, SearchBoolean):
+            condition_filter, having_filter = convert_search_boolean_to_snuba_query(term, params)
+            if condition_filter:
+                kwargs["conditions"].append(condition_filter)
+            if having_filter:
+                kwargs["having"].append(having_filter)
         elif isinstance(term, AggregateFilter):
             converted_filter = convert_aggregate_filter_to_snuba_query(term, params)
             if converted_filter:
