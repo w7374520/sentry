@@ -857,10 +857,14 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
         # )
         # print("2", print_sb(result[0]))
 
-        result = parse_search_query(
-            "user.email:foo@example.com OR user.email:bar@example.com AND user.email:foobar@example.com OR user.email:hello@example.com"
-        )
-        print("3", print_sb(result[0]))
+        # result = parse_search_query(
+        #     "user.email:foo@example.com OR user.email:bar@example.com AND user.email:foobar@example.com OR user.email:hello@example.com"
+        # )
+        # print("3", print_sb(result[0]))
+
+        result = parse_search_query("title:bar foo evan hicks OR title:baz")
+        print("3", print_res(result))
+        print("3", result)
 
         # result = parse_search_query(
         #     "user.email:foo@example.com user.email:bar@example.com OR user.email:foobar@example.com"
