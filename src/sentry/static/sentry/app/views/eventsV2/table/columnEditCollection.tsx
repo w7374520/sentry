@@ -40,6 +40,7 @@ type State = {
 
 const DRAG_CLASS = 'draggable-item';
 const GRAB_HANDLE_FUDGE = 25;
+const MAX_COL_COUNT = 20;
 
 enum PlaceholderPosition {
   TOP,
@@ -285,7 +286,8 @@ class ColumnEditCollection extends React.Component<Props, State> {
             <Button
               aria-label={t('Drag to reorder')}
               onMouseDown={event => this.startDrag(event, i)}
-              icon={<IconGrabbable size="xs" color={theme.gray700} />}
+              icon={<IconGrabbable size="xs" color="gray700" />}
+              size="zero"
               borderless
             />
           ) : (
@@ -302,7 +304,7 @@ class ColumnEditCollection extends React.Component<Props, State> {
             <Button
               aria-label={t('Remove column')}
               onClick={() => this.removeColumn(i)}
-              icon={<IconDelete color={theme.gray500} />}
+              icon={<IconDelete color="gray500" />}
               borderless
             />
           ) : (
@@ -317,6 +319,10 @@ class ColumnEditCollection extends React.Component<Props, State> {
   render() {
     const {columns} = this.props;
     const canDelete = columns.length > 1;
+    const canAdd = columns.length < MAX_COL_COUNT;
+    const title = canAdd
+      ? undefined
+      : `Sorry, you reached the maximum number of columns. Delete columns to add more.`;
 
     // Get the longest number of columns so we can layout the rows.
     // We always want at least 2 columns.
@@ -344,6 +350,8 @@ class ColumnEditCollection extends React.Component<Props, State> {
               size="small"
               label={t('Add a Column')}
               onClick={this.handleAddColumn}
+              title={title}
+              disabled={!canAdd}
               icon={<IconAdd isCircled size="xs" />}
             >
               {t('Add a Column')}
@@ -357,7 +365,7 @@ class ColumnEditCollection extends React.Component<Props, State> {
 
 const RowContainer = styled('div')`
   display: grid;
-  grid-template-columns: 30px auto 30px;
+  grid-template-columns: 24px auto 24px;
   align-items: center;
   width: 100%;
   padding-bottom: ${space(1)};
@@ -404,7 +412,7 @@ const Heading = styled('div')<{gridColumns: number}>`
 `;
 
 const StyledSectionHeading = styled(SectionHeading)`
-  margin-bottom: 0;
+  margin: 0;
 `;
 
 export default ColumnEditCollection;

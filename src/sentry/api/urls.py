@@ -101,6 +101,7 @@ from .endpoints.organization_group_index import OrganizationGroupIndexEndpoint
 from .endpoints.organization_index import OrganizationIndexEndpoint
 from .endpoints.organization_integration_details import OrganizationIntegrationDetailsEndpoint
 from .endpoints.organization_integration_repos import OrganizationIntegrationReposEndpoint
+from .endpoints.organization_integration_request import OrganizationIntegrationRequestEndpoint
 from .endpoints.organization_integrations import OrganizationIntegrationsEndpoint
 from .endpoints.organization_issues_new import OrganizationIssuesNewEndpoint
 from .endpoints.organization_issues_resolved_in_release import (
@@ -129,6 +130,9 @@ from .endpoints.organization_projects import OrganizationProjectsEndpoint
 from .endpoints.organization_recent_searches import OrganizationRecentSearchesEndpoint
 from .endpoints.organization_release_assemble import OrganizationReleaseAssembleEndpoint
 from .endpoints.organization_release_commits import OrganizationReleaseCommitsEndpoint
+from .endpoints.organization_release_previous_commits import (
+    OrganizationReleasePreviousCommitsEndpoint,
+)
 from .endpoints.organization_release_details import OrganizationReleaseDetailsEndpoint
 from .endpoints.organization_release_meta import OrganizationReleaseMetaEndpoint
 from .endpoints.organization_release_file_details import OrganizationReleaseFileDetailsEndpoint
@@ -844,6 +848,11 @@ urlpatterns = [
                     name="sentry-api-0-organization-member-index",
                 ),
                 url(
+                    r"^(?P<organization_slug>[^\/]+)/integration-requests/$",
+                    OrganizationIntegrationRequestEndpoint.as_view(),
+                    name="sentry-api-0-organization-integration-request",
+                ),
+                url(
                     r"^(?P<organization_slug>[^\/]+)/invite-requests/$",
                     OrganizationInviteRequestIndexEndpoint.as_view(),
                     name="sentry-api-0-organization-invite-request-index",
@@ -1006,6 +1015,11 @@ urlpatterns = [
                     r"^(?P<organization_slug>[^\/]+)/releases/(?P<version>[^/]+)/commits/$",
                     OrganizationReleaseCommitsEndpoint.as_view(),
                     name="sentry-api-0-organization-release-commits",
+                ),
+                url(
+                    r"^(?P<organization_slug>[^\/]+)/releases/(?P<version>[^/]+)/previous-with-commits/$",
+                    OrganizationReleasePreviousCommitsEndpoint.as_view(),
+                    name="sentry-api-0-organization-release-previous-with-commits",
                 ),
                 url(
                     r"^(?P<organization_slug>[^\/]+)/user-feedback/$",

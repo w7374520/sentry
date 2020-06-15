@@ -2,6 +2,7 @@ import React from 'react';
 import map from 'lodash/map';
 import styled from '@emotion/styled';
 
+import {Organization, SentryTransactionEvent} from 'app/types';
 import {Client} from 'app/api';
 import {IconWarning} from 'app/icons';
 import {TableDataRow} from 'app/views/eventsV2/table/types';
@@ -10,7 +11,7 @@ import {generateEventSlug, eventDetailsRoute} from 'app/utils/discover/urls';
 import {getParams} from 'app/components/organizations/globalSelectionHeader/getParams';
 import {t, tct} from 'app/locale';
 import Alert from 'app/components/alert';
-import Button from 'app/components/button';
+import DiscoverButton from 'app/components/discoverButton';
 import DateTime from 'app/components/dateTime';
 import EventView from 'app/utils/discover/eventView';
 import Link from 'app/components/links/link';
@@ -33,6 +34,8 @@ type TransactionResult = {
 type Props = {
   api: Client;
   orgId: string;
+  organization: Organization;
+  event: Readonly<SentryTransactionEvent>;
   span: Readonly<ProcessedSpanType>;
   isRoot: boolean;
   eventView: EventView;
@@ -73,9 +76,16 @@ class SpanDetail extends React.Component<Props, State> {
   }
 
   fetchSpanDescendents(spanID: string, traceID: string): Promise<any> {
-    const {api, orgId, trace} = this.props;
+    const {api, organization, trace} = this.props;
 
-    const url = `/organizations/${orgId}/eventsv2/`;
+    // Skip doing a request if the results will be behind a disabled button.
+    if (!organization.features.includes('discover-basic')) {
+      return new Promise(resolve => {
+        resolve({data: []});
+      });
+    }
+
+    const url = `/organizations/${organization.slug}/eventsv2/`;
 
     const {start, end} = getParams(
       getTraceDateTimeRange({
@@ -103,21 +113,21 @@ class SpanDetail extends React.Component<Props, State> {
       // TODO: Amend size to use theme when we evetually refactor LoadingIndicator
       // 12px is consistent with theme.iconSizes['xs'] but theme returns a string.
       return (
-        <StyledButton size="xsmall" disabled>
+        <StyledDiscoverButton size="xsmall" disabled>
           <StyledLoadingIndicator size={12} />
-        </StyledButton>
+        </StyledDiscoverButton>
       );
     }
 
     if (this.state.transactionResults.length <= 0) {
       return (
-        <StyledButton size="xsmall" disabled>
+        <StyledDiscoverButton size="xsmall" disabled>
           {t('No Children')}
-        </StyledButton>
+        </StyledDiscoverButton>
       );
     }
 
-    const {span, orgId, trace, eventView} = this.props;
+    const {span, orgId, trace, eventView, event, organization} = this.props;
 
     assert(!isGapSpan(span));
 
@@ -133,11 +143,13 @@ class SpanDetail extends React.Component<Props, State> {
       };
 
       return (
-        <StyledButton data-test-id="view-child-transaction" size="xsmall" to={to}>
+        <StyledDiscoverButton data-test-id="view-child-transaction" size="xsmall" to={to}>
           {t('View Child')}
-        </StyledButton>
+        </StyledDiscoverButton>
       );
     }
+
+    const orgFeatures = new Set(organization.features);
 
     const {start, end} = getTraceDateTimeRange({
       start: trace.traceStartTimestamp,
@@ -156,25 +168,25 @@ class SpanDetail extends React.Component<Props, State> {
       ],
       orderby: '-timestamp',
       query: `event.type:transaction trace:${span.trace_id} trace.parent_span:${span.span_id}`,
-      projects: eventView.project,
+      projects: orgFeatures.has('global-views') ? [] : [Number(event.projectID)],
       version: 2,
       start,
       end,
     });
 
     return (
-      <StyledButton
+      <StyledDiscoverButton
         data-test-id="view-child-transactions"
         size="xsmall"
         to={childrenEventView.getResultsViewUrlTarget(orgId)}
       >
         {t('View Children')}
-      </StyledButton>
+      </StyledDiscoverButton>
     );
   }
 
   renderTraceButton() {
-    const {span, orgId, trace, eventView} = this.props;
+    const {span, orgId, organization, trace, event} = this.props;
 
     const {start, end} = getTraceDateTimeRange({
       start: trace.traceStartTimestamp,
@@ -184,6 +196,8 @@ class SpanDetail extends React.Component<Props, State> {
     if (isGapSpan(span)) {
       return null;
     }
+
+    const orgFeatures = new Set(organization.features);
 
     const traceEventView = EventView.fromSavedQuery({
       id: undefined,
@@ -197,16 +211,19 @@ class SpanDetail extends React.Component<Props, State> {
       ],
       orderby: '-timestamp',
       query: `event.type:transaction trace:${span.trace_id}`,
-      projects: eventView.project,
+      projects: orgFeatures.has('global-views') ? [] : [Number(event.projectID)],
       version: 2,
       start,
       end,
     });
 
     return (
-      <StyledButton size="xsmall" to={traceEventView.getResultsViewUrlTarget(orgId)}>
+      <StyledDiscoverButton
+        size="xsmall"
+        to={traceEventView.getResultsViewUrlTarget(orgId)}
+      >
         {t('Search by Trace')}
-      </StyledButton>
+      </StyledDiscoverButton>
     );
   }
 
@@ -227,7 +244,15 @@ class SpanDetail extends React.Component<Props, State> {
   }
 
   renderSpanErrorMessage() {
-    const {orgId, spanErrors, totalNumberOfErrors, span, trace, eventView} = this.props;
+    const {
+      orgId,
+      spanErrors,
+      totalNumberOfErrors,
+      span,
+      trace,
+      organization,
+      event,
+    } = this.props;
 
     if (spanErrors.length === 0 || totalNumberOfErrors === 0 || isGapSpan(span)) {
       return null;
@@ -242,13 +267,15 @@ class SpanDetail extends React.Component<Props, State> {
       end: trace.traceEndTimestamp,
     });
 
+    const orgFeatures = new Set(organization.features);
+
     const errorsEventView = EventView.fromSavedQuery({
       id: undefined,
       name: `Error events associated with span ${span.span_id}`,
       fields: ['title', 'project', 'issue', 'timestamp'],
       orderby: '-timestamp',
       query: `event.type:error trace:${span.trace_id} trace.span:${span.span_id}`,
-      projects: eventView.project,
+      projects: orgFeatures.has('global-views') ? [] : [Number(event.projectID)],
       version: 2,
       start,
       end,
@@ -385,7 +412,7 @@ class SpanDetail extends React.Component<Props, State> {
   }
 }
 
-const StyledButton = styled(Button)`
+const StyledDiscoverButton = styled(DiscoverButton)`
   position: absolute;
   top: ${space(0.75)};
   right: ${space(0.5)};

@@ -5,7 +5,6 @@ import {t} from 'app/locale';
 import EmptyStateWarning from 'app/components/emptyStateWarning';
 import LoadingIndicator from 'app/components/loadingIndicator';
 import {IconWarning} from 'app/icons';
-import theme from 'app/utils/theme';
 
 import {
   GridColumn,
@@ -343,7 +342,7 @@ class GridEditable<
     return (
       <GridRow>
         <GridBodyCellStatus>
-          <IconWarning color={theme.gray500} size="lg" />
+          <IconWarning color="gray500" size="lg" />
         </GridBodyCellStatus>
       </GridRow>
     );
@@ -397,6 +396,7 @@ class GridEditable<
 
 export default GridEditable;
 export {
+  COL_WIDTH_MINIMUM,
   COL_WIDTH_UNDEFINED,
   GridColumn,
   GridColumnHeader,
