@@ -833,7 +833,7 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
     def test_evans_experiments(self):
         def print_sb(term):
             if isinstance(term, SearchFilter):
-                return "{}{}{}".format(term.key.name, term.operator, term.value.raw_value)
+                return "{}{}'{}'".format(term.key.name, term.operator, term.value.raw_value)
 
             return "({} {} {})".format(
                 print_sb(term.left_term), term.operator, print_sb(term.right_term)
@@ -841,6 +841,19 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
 
         def print_res(res):
             return " AND ".join(print_sb(term) for term in res)
+
+        result = parse_search_query("some stuff title:bar title:baz")
+        formatted = print_res(result)
+        print("RES", formatted, result)
+        # assert formatted == "and(equals(title, 'bar'), equals(title, 'baz')"
+
+        # TEST CASES
+        # search_term search_term paren_term search_term
+        # search_term search_term boolean_term search_term
+        # paren_term search_term boolean_term search_term
+        # boolean_term search_term search_term boolean_term
+        # search_term paren_term search_term boolean_term
+        # "some raw message OR some other raw message"
 
         # result = parse_search_query(
         #     "user.email:foo@example.com OR user.email:bar@example.com OR user.email:foobar@example.com AND user.email:hello@example.com"
@@ -863,9 +876,9 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
         # )
         # print("3", print_sb(result[0]))
 
-        result = parse_search_query("title:bar foo evan hicks OR title:baz")
-        print("3", print_res(result))
-        print("3", result)
+        # result = parse_search_query("title:bar foo evan hicks OR title:baz")
+        # print("3", print_res(result))
+        # print("3", result)
 
         # result = parse_search_query(
         #     "user.email:foo@example.com user.email:bar@example.com OR user.email:foobar@example.com"

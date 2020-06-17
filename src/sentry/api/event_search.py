@@ -102,15 +102,15 @@ def translate(pat):
 
 event_search_grammar = Grammar(
     r"""
-search               = (boolean_term / paren_term / search_term)*
-boolean_term         = (paren_term / search_term) space? (boolean_operator space? (paren_term / search_term) space?)+
+search               = (paren_term / boolean_term / search_term)*
+boolean_term         = (paren_term / search_term)* space? (boolean_operator space? (paren_term / search_term) space?)+
 paren_term           = spaces open_paren space? (paren_term / boolean_term)+ space? closed_paren spaces
 search_term          = key_val_term / quoted_raw_search / raw_search
 key_val_term         = spaces (tag_filter / time_filter / rel_time_filter / specific_time_filter / duration_filter
                        / numeric_filter / aggregate_filter / aggregate_date_filter / aggregate_rel_date_filter / has_filter
                        / is_filter / quoted_basic_filter / basic_filter)
                        spaces
-raw_search           = (!key_val_term ~r"\ *([^\ ^\n ()]+)\ *" )*
+raw_search           = (!key_val_term ~r"\ *(?!(?i)OR)(?!(?i)AND)([^\ ^\n ()]+)\ *" )*
 quoted_raw_search    = spaces quoted_value spaces
 
 # standard key:val filter
@@ -156,7 +156,9 @@ duration_format      = ~r"([0-9\.]+)(ms|s|min|m|hr|h|day|d|wk|w)(?=\s|$)"
 # NOTE: the order in which these operators are listed matters
 # because for example, if < comes before <= it will match that
 # even if the operator is <=
-boolean_operator     = "OR" / "AND"
+boolean_operator     = or_operator / and_operator
+or_operator          = ~r"OR"i
+and_operator         = ~r"AND"i
 operator             = ">=" / "<=" / ">" / "<" / "=" / "!="
 open_paren           = "("
 closed_paren         = ")"
@@ -199,6 +201,11 @@ class InvalidSearchQuery(Exception):
 class SearchBoolean(namedtuple("SearchBoolean", "left_term operator right_term")):
     BOOLEAN_AND = "AND"
     BOOLEAN_OR = "OR"
+
+
+# class SearchBoolean(namedtuple("SearchBoolean", "children")):
+#     BOOLEAN_AND = "AND"
+#     BOOLEAN_OR = "OR"
 
 
 class SearchFilter(namedtuple("SearchFilter", "key operator value")):
@@ -350,7 +357,16 @@ class SearchVisitor(NodeVisitor):
             return None
         return SearchFilter(SearchKey("message"), "=", SearchValue(value))
 
+    def visit_boolean_expression(self, node, children):
+        children = self.flatten(children)
+        return children
+
     def visit_boolean_term(self, node, children):
+        # # This term is used as a flag so we can correctly process the entire expression in the code later.
+        # children = self.flatten(children)
+        # children = self.remove_optional_nodes(children)
+        # children = self.remove_space(children)
+        # return SearchBoolean(children)
         def find_next_operator(children, start, end, operator):
             for index in range(start, end):
                 if children[index] == operator:
@@ -382,10 +398,21 @@ class SearchVisitor(NodeVisitor):
         children = self.remove_optional_nodes(children)
         children = self.remove_space(children)
 
-        for i, c in enumerate(children):
+        # If the expression has any implicit ANDs, add them in to the children so the parser
+        # correctly groups them
+        new_children = []
+        prev = None
+        for c in children:
+            if prev and isinstance(prev, SearchFilter) and isinstance(c, SearchFilter):
+                new_children.append(SearchBoolean.BOOLEAN_AND)
+
+            new_children.append(c)
+            prev = c
+
+        for i, c in enumerate(new_children):
             print("C", i, c)
 
-        return [build_boolean_tree(children, 0, len(children))]
+        return [build_boolean_tree(new_children, 0, len(new_children))]
 
     def visit_paren_term(self, node, children):
         children = self.flatten(children)
@@ -642,11 +669,16 @@ class SearchVisitor(NodeVisitor):
         return node.text
 
     def visit_boolean_operator(self, node, children):
-        if not self.allow_boolean:
+        is_operator = node.text.upper() in [SearchBoolean.BOOLEAN_AND, SearchBoolean.BOOLEAN_OR]
+        if not self.allow_boolean and not is_operator:
             raise InvalidSearchQuery(
                 'Boolean statements containing "OR" or "AND" are not supported in this search'
             )
-        return node.text
+
+        if not is_operator:
+            return SearchBoolean.BOOLEAN_AND
+
+        return node.text.upper()
 
     def visit_value(self, node, children):
         # A properly quoted value will match the quoted value regex, so any unescaped
