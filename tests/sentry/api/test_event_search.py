@@ -19,6 +19,7 @@ from sentry.api.event_search import (
     parse_search_query,
     get_json_meta_type,
     InvalidSearchQuery,
+    ParenExpression,
     SearchBoolean,
     SearchFilter,
     SearchKey,
@@ -795,7 +796,7 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
         )
 
     def test_simple(self):
-        assert parse_search_query("user.email:foo@example.com OR user.email:bar@example.com") == [
+        assert get_filter("user.email:foo@example.com OR user.email:bar@example.com") == [
             SearchBoolean(left_term=self.term1, operator="OR", right_term=self.term2)
         ]
 
@@ -829,6 +830,240 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
                 right_term=self.term3,
             )
         ]
+
+    def test_combining_normal_terms_with_boolean(self):
+        def format_query(parsed_query):
+            message = []
+            for term in parsed_query:
+                if isinstance(term, ParenExpression):
+                    message.append("({})".format(format_query(term.children)))
+                elif isinstance(term, SearchFilter):
+                    message.append(
+                        "{}{}'{}'".format(term.key.name, term.operator, term.value.value)
+                    )
+                else:
+                    message.append("{}".format(term))
+
+            return " ".join(message)
+
+        tests = [
+            (
+                "foo bar baz OR fizz buzz bizz",
+                [
+                    SearchFilter(
+                        key=SearchKey(name="message"),
+                        operator="=",
+                        value=SearchValue(raw_value="foo bar baz"),
+                    ),
+                    "OR",
+                    SearchFilter(
+                        key=SearchKey(name="message"),
+                        operator="=",
+                        value=SearchValue(raw_value="fizz buzz bizz"),
+                    ),
+                ],
+            ),
+            (
+                "a:b (c:d OR e:f) g:h i:j OR k:l",
+                [
+                    SearchFilter(
+                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
+                    ),
+                    ParenExpression(
+                        children=[
+                            SearchFilter(
+                                key=SearchKey(name="c"),
+                                operator="=",
+                                value=SearchValue(raw_value="d"),
+                            ),
+                            "OR",
+                            SearchFilter(
+                                key=SearchKey(name="e"),
+                                operator="=",
+                                value=SearchValue(raw_value="f"),
+                            ),
+                        ]
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
+                    ),
+                    "OR",
+                    SearchFilter(
+                        key=SearchKey(name="k"), operator="=", value=SearchValue(raw_value="l")
+                    ),
+                ],
+            ),
+            (
+                "a:b OR c:d e:f g:h (i:j OR k:l)",
+                [
+                    SearchFilter(
+                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
+                    ),
+                    "OR",
+                    SearchFilter(
+                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
+                    ),
+                    ParenExpression(
+                        children=[
+                            SearchFilter(
+                                key=SearchKey(name="i"),
+                                operator="=",
+                                value=SearchValue(raw_value="j"),
+                            ),
+                            "OR",
+                            SearchFilter(
+                                key=SearchKey(name="k"),
+                                operator="=",
+                                value=SearchValue(raw_value="l"),
+                            ),
+                        ]
+                    ),
+                ],
+            ),
+            (
+                "(a:b OR c:d) e:f",
+                [
+                    ParenExpression(
+                        children=[
+                            SearchFilter(
+                                key=SearchKey(name="a"),
+                                operator="=",
+                                value=SearchValue(raw_value="b"),
+                            ),
+                            "OR",
+                            SearchFilter(
+                                key=SearchKey(name="c"),
+                                operator="=",
+                                value=SearchValue(raw_value="d"),
+                            ),
+                        ]
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
+                    ),
+                ],
+            ),
+            (
+                "a:b OR c:d e:f g:h i:j OR k:l",
+                [
+                    SearchFilter(
+                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
+                    ),
+                    "OR",
+                    SearchFilter(
+                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
+                    ),
+                    "OR",
+                    SearchFilter(
+                        key=SearchKey(name="k"), operator="=", value=SearchValue(raw_value="l")
+                    ),
+                ],
+            ),
+            (
+                "(a:b OR c:d) e:f g:h OR i:j k:l",
+                [
+                    ParenExpression(
+                        children=[
+                            SearchFilter(
+                                key=SearchKey(name="a"),
+                                operator="=",
+                                value=SearchValue(raw_value="b"),
+                            ),
+                            "OR",
+                            SearchFilter(
+                                key=SearchKey(name="c"),
+                                operator="=",
+                                value=SearchValue(raw_value="d"),
+                            ),
+                        ]
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
+                    ),
+                    "OR",
+                    SearchFilter(
+                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="k"), operator="=", value=SearchValue(raw_value="l")
+                    ),
+                ],
+            ),
+            (
+                "a:b c:d e:f OR g:h i:j",
+                [
+                    SearchFilter(
+                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
+                    ),
+                    "OR",
+                    SearchFilter(
+                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
+                    ),
+                ],
+            ),
+            (
+                "a:b c:d (e:f OR g:h) i:j",
+                [
+                    SearchFilter(
+                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
+                    ),
+                    ParenExpression(
+                        children=[
+                            SearchFilter(
+                                key=SearchKey(name="e"),
+                                operator="=",
+                                value=SearchValue(raw_value="f"),
+                            ),
+                            "OR",
+                            SearchFilter(
+                                key=SearchKey(name="g"),
+                                operator="=",
+                                value=SearchValue(raw_value="h"),
+                            ),
+                        ]
+                    ),
+                    SearchFilter(
+                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
+                    ),
+                ],
+            ),
+        ]
+
+        for test in tests:
+            assert test[1] == parse_search_query(test[0])
 
     def test_evans_experiments(self):
         def print_sb(term):
@@ -1006,6 +1241,7 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
         result = parse_search_query(
             "(user.email:foo@example.com OR user.email:bar@example.com) AND user.email:foobar@example.com"
         )
+
         assert result == [
             SearchBoolean(
                 left_term=SearchBoolean(left_term=self.term1, operator="OR", right_term=self.term2),

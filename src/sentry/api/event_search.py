@@ -39,6 +39,16 @@ NEGATION_MAP = {
     ">": "<=",
     ">=": "<",
 }
+SNUBA_OR = "or"
+SNUBA_AND = "and"
+OPERATOR_TO_FUNCTION = {
+    "=": "equals",
+    "!=": "notEquals",
+    ">": "greater",
+    "<": "less",
+    ">=": "greaterOrEquals",
+    "<=": "lessOrEquals",
+}
 
 
 def translate(pat):
@@ -102,9 +112,10 @@ def translate(pat):
 
 event_search_grammar = Grammar(
     r"""
-search               = (paren_term / boolean_term / search_term)*
-boolean_term         = (paren_term / search_term)* space? (boolean_operator space? (paren_term / search_term) space?)+
-paren_term           = spaces open_paren space? (paren_term / boolean_term)+ space? closed_paren spaces
+search               = (boolean_operator / paren_term / search_term)*
+boolean_operator     = spaces (or_operator / and_operator) spaces
+# boolean_term         = (paren_term / search_term)+ space? (boolean_operator space? (paren_term / search_term) space?)+
+paren_term           = spaces open_paren space? (paren_term / boolean_operator / search_term)+ space? closed_paren spaces
 search_term          = key_val_term / quoted_raw_search / raw_search
 key_val_term         = spaces (tag_filter / time_filter / rel_time_filter / specific_time_filter / duration_filter
                        / numeric_filter / aggregate_filter / aggregate_date_filter / aggregate_rel_date_filter / has_filter
@@ -156,7 +167,7 @@ duration_format      = ~r"([0-9\.]+)(ms|s|min|m|hr|h|day|d|wk|w)(?=\s|$)"
 # NOTE: the order in which these operators are listed matters
 # because for example, if < comes before <= it will match that
 # even if the operator is <=
-boolean_operator     = or_operator / and_operator
+# boolean_operator     = spacesor_operator / and_operator
 or_operator          = ~r"OR"i
 and_operator         = ~r"AND"i
 operator             = ">=" / "<=" / ">" / "<" / "=" / "!="
@@ -202,10 +213,13 @@ class SearchBoolean(namedtuple("SearchBoolean", "left_term operator right_term")
     BOOLEAN_AND = "AND"
     BOOLEAN_OR = "OR"
 
+    @staticmethod
+    def is_operator(value):
+        return value == SearchBoolean.BOOLEAN_AND or value == SearchBoolean.BOOLEAN_OR
 
-# class SearchBoolean(namedtuple("SearchBoolean", "children")):
-#     BOOLEAN_AND = "AND"
-#     BOOLEAN_OR = "OR"
+
+class ParenExpression(namedtuple("ParenExpression", "children")):
+    pass
 
 
 class SearchFilter(namedtuple("SearchFilter", "key operator value")):
@@ -357,68 +371,69 @@ class SearchVisitor(NodeVisitor):
             return None
         return SearchFilter(SearchKey("message"), "=", SearchValue(value))
 
-    def visit_boolean_expression(self, node, children):
-        children = self.flatten(children)
-        return children
+    # def visit_boolean_expression(self, node, children):
+    #     children = self.flatten(children)
+    #     return children
 
-    def visit_boolean_term(self, node, children):
-        # # This term is used as a flag so we can correctly process the entire expression in the code later.
-        # children = self.flatten(children)
-        # children = self.remove_optional_nodes(children)
-        # children = self.remove_space(children)
-        # return SearchBoolean(children)
-        def find_next_operator(children, start, end, operator):
-            for index in range(start, end):
-                if children[index] == operator:
-                    return index
-            return None
+    # def visit_boolean_term(self, node, children):
+    #     def find_next_operator(children, start, end, operator):
+    #         for index in range(start, end):
+    #             if children[index] == operator:
+    #                 return index
+    #         return None
 
-        def build_boolean_tree_branch(children, start, end, operator):
-            index = find_next_operator(children, start, end, operator)
-            print("BRANCH", start, end, operator, index)
-            if index is None:
-                return None
-            left = build_boolean_tree(children, start, index)
-            right = build_boolean_tree(children, index + 1, end)
-            return SearchBoolean(left, children[index], right)
+    #     def build_boolean_tree_branch(children, start, end, operator):
+    #         index = find_next_operator(children, start, end, operator)
+    #         print("BRANCH", start, end, operator, index)
+    #         if index is None:
+    #             return None
+    #         left = build_boolean_tree(children, start, index)
+    #         right = build_boolean_tree(children, index + 1, end)
+    #         return SearchBoolean(left, children[index], right)
 
-        def build_boolean_tree(children, start, end):
-            if end - start == 1:
-                return children[start]
+    #     def build_boolean_tree(children, start, end):
+    #         if end - start == 1:
+    #             return children[start]
 
-            print("tree", start, end)
-            result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_OR)
-            print("FOUND OR!", result)
-            if result is None:
-                result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_AND)
+    #         print("tree", start, end)
+    #         result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_OR)
+    #         print("FOUND OR!", result)
+    #         if result is None:
+    #             result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_AND)
 
-            return result
+    #         return result
 
-        children = self.flatten(children)
-        children = self.remove_optional_nodes(children)
-        children = self.remove_space(children)
+    #     children = self.flatten(children)
+    #     children = self.remove_optional_nodes(children)
+    #     children = self.remove_space(children)
 
-        # If the expression has any implicit ANDs, add them in to the children so the parser
-        # correctly groups them
-        new_children = []
-        prev = None
-        for c in children:
-            if prev and isinstance(prev, SearchFilter) and isinstance(c, SearchFilter):
-                new_children.append(SearchBoolean.BOOLEAN_AND)
+    #     # If the expression has any implicit ANDs, add them in to the children so the parser
+    #     # correctly groups them
+    #     new_children = []
+    #     prev = None
+    #     for c in children:
+    #         if prev and not SearchBoolean.is_operator(prev) and not SearchBoolean.is_operator(c):
+    #             new_children.append(SearchBoolean.BOOLEAN_AND)
 
-            new_children.append(c)
-            prev = c
+    #         # if isinstance(c, list):
+    #         #     new_children.extend(c)
+    #         # else:
+    #         new_children.append(c)
+    #         prev = c
 
-        for i, c in enumerate(new_children):
-            print("C", i, c)
+    #     for i, c in enumerate(new_children):
+    #         print("C", i, c)
 
-        return [build_boolean_tree(new_children, 0, len(new_children))]
+    #     return [build_boolean_tree(new_children, 0, len(new_children))]
 
     def visit_paren_term(self, node, children):
         children = self.flatten(children)
         children = self.remove_optional_nodes(children)
         children = self.remove_space(children)
-        return self.flatten(children[1])
+        for c in self.flatten(children[1]):
+            print("C", c)
+        return ParenExpression(self.flatten(children[1]))
+        # return self.flatten(children[1])
 
     def visit_numeric_filter(self, node, children):
         (search_key, _, operator, search_value) = children
@@ -669,16 +684,13 @@ class SearchVisitor(NodeVisitor):
         return node.text
 
     def visit_boolean_operator(self, node, children):
-        is_operator = node.text.upper() in [SearchBoolean.BOOLEAN_AND, SearchBoolean.BOOLEAN_OR]
-        if not self.allow_boolean and not is_operator:
+        if not self.allow_boolean:
             raise InvalidSearchQuery(
                 'Boolean statements containing "OR" or "AND" are not supported in this search'
             )
 
-        if not is_operator:
-            return SearchBoolean.BOOLEAN_AND
-
-        return node.text.upper()
+        children = self.flatten(self.remove_space(children))
+        return children[0].text.upper()
 
     def visit_value(self, node, children):
         # A properly quoted value will match the quoted value regex, so any unescaped
@@ -749,21 +761,6 @@ def convert_aggregate_filter_to_snuba_query(aggregate_filter, params):
 
     condition = [name, aggregate_filter.operator, value]
     return condition
-
-
-def convert_search_boolean_to_snuba_query(term, params=None):
-    def convert_to_function(condition):
-        return ["equals", [condition[0], "'{}'".format(condition[2])]]
-
-    print("LEFT", term.left_term)
-    print("RIGHT", term.right_term)
-    left_filter = convert_search_filter_to_snuba_query(term.left_term)
-    right_filter = convert_search_filter_to_snuba_query(term.right_term)
-    function = "or"
-    return (
-        [[function, [convert_to_function(left_filter), convert_to_function(right_filter)]], "=", 1],
-        None,
-    )
 
 
 def convert_search_filter_to_snuba_query(search_filter, key=None):
@@ -884,6 +881,202 @@ def convert_search_filter_to_snuba_query(search_filter, key=None):
             return condition
 
 
+def to_list(value):
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def format_search_filter(term, params):
+    project_to_filter = None  # Used to avoid doing multiple conditions on project ID
+    conditions = []
+    group_ids = None
+    name = term.key.name
+    value = term.value.value
+    if name in (PROJECT_ALIAS, PROJECT_NAME_ALIAS):
+        project = None
+        try:
+            project = Project.objects.get(id__in=params.get("project_id", []), slug=value)
+        except Exception:
+            raise InvalidSearchQuery(
+                u"Invalid query. Project {} does not exist or is not an actively selected project.".format(
+                    value
+                )
+            )
+
+        # Create a new search filter with the correct values
+        term = SearchFilter(SearchKey("project_id"), term.operator, SearchValue(project.id))
+        converted_filter = convert_search_filter_to_snuba_query(term)
+        if converted_filter:
+            if term.operator == "=":
+                project_to_filter = project.id
+
+            conditions.append(converted_filter)
+    elif name == ISSUE_ID_ALIAS and value != "":
+        # A blank term value means that this is a has filter
+        group_ids = to_list(value)
+    elif name == ISSUE_ALIAS:
+        if value != "" and params and "organization_id" in params:
+            try:
+                group = Group.objects.by_qualified_short_id(params["organization_id"], value)
+            except Exception:
+                raise InvalidSearchQuery(u"Invalid value '{}' for 'issue:' filter".format(value))
+            else:
+                value = group.id
+        term = SearchFilter(SearchKey("issue.id"), term.operator, SearchValue(value))
+        converted_filter = convert_search_filter_to_snuba_query(term)
+        conditions.append(converted_filter)
+    elif name == USER_ALIAS:
+        # If the key is user, do an OR across all the different possible user fields
+        user_conditions = [
+            convert_search_filter_to_snuba_query(term, key=field)
+            for field in FIELD_ALIASES[USER_ALIAS]["fields"]
+        ]
+        if term.operator == "!=" and value != "":
+            conditions.extend(user_conditions)
+        else:
+            conditions.append(user_conditions)
+    elif name == RELEASE_ALIAS and params and value == "latest":
+        converted_filter = convert_search_filter_to_snuba_query(
+            SearchFilter(
+                term.key,
+                term.operator,
+                SearchValue(
+                    parse_release(
+                        value,
+                        params["project_id"],
+                        params.get("environment_objects"),
+                        params["organization_id"],
+                    )
+                ),
+            )
+        )
+        if converted_filter:
+            conditions.append(converted_filter)
+    elif name in FIELD_ALIASES and name != PROJECT_ALIAS:
+        if "column_alias" in FIELD_ALIASES[name]:
+            term = SearchFilter(
+                SearchKey(FIELD_ALIASES[name]["column_alias"]), term.operator, term.value
+            )
+        converted_filter = convert_aggregate_filter_to_snuba_query(term, params)
+        if converted_filter:
+            conditions.append(converted_filter)
+    else:
+        converted_filter = convert_search_filter_to_snuba_query(term)
+        if converted_filter:
+            conditions.append(converted_filter)
+
+    return conditions, project_to_filter, group_ids
+
+
+def convert_snuba_condition_to_function(term, params=None):
+    if isinstance(term, ParenExpression):
+        return convert_search_boolean_to_snuba_query(term.children, params)
+
+    group_ids = []
+    projects_to_filter = []
+    elif isinstance(term, SearchFilter):
+        conditions, project_to_filter, group_ids = format_search_filter(term, params)
+        projects_to_filter = [project_to_filter] if project_to_filter else []
+        groups_ids = group_ids if group_ids else []
+        if conditions:
+
+
+
+    # base case (1 term) ->
+    #   If it's a paren, recurse,
+    #   elif search filter
+    #       format using fsf
+    #       convert to function e.g. equals(x, y)
+    #       return function
+    #   elif aggregate filter
+    #       if we're in an OR, bail out
+    #       convert_aggregate_filter_to_snuba_query
+    #       convert to function e.g. equals(x, y)
+
+
+    # Can be an empty array (a group_id filter returns no condition, just adds to the group_id array)
+    # Can be an array containing a single condition [[x, "=", y]] -> ["equals", [x, y]]
+    # Can be an array of conditions [[x, "=", y], [a, "!=", b]] -> ["and", [["equals", [x, y]], ["notEquals", [a, b]]]]
+    # Can be an array of an array of conditions [[[a, "=", b], [c, "=", d]]] -> ["or", [["equals", [a, b]], ["notEquals", [c, d]]]]
+
+    return "equals"
+
+
+def convert_search_boolean_to_snuba_query(terms, params=None):
+    if len(terms) == 1:
+        return convert_snuba_condition_to_function(terms[0], params)
+
+    # Filter out any ANDs since we can assume anything without an OR is an AND. Also do some
+    # basic sanitization of the query: can't have two operators next to each other, and can't
+    # start or end a query with an operator.
+    prev = None
+    new_terms = []
+    for term in terms:
+        if prev:
+            if SearchBoolean.is_operator(prev) and SearchBoolean.is_operator(term):
+                raise InvalidSearchQuery(
+                    u"cannot have two conditions next to each other: {} {}".format(prev, term)
+                )
+        else:
+            if SearchBoolean.is_operator(term):
+                raise InvalidSearchQuery(u"condition is missing on left side of {}".format(term))
+
+        if term != SearchBoolean.BOOLEAN_AND:
+            new_terms.append(term)
+        prev = term
+
+    if SearchBoolean.is_operator(term):
+        raise InvalidSearchQuery(u"condition is missing on right side of {}".format(term))
+
+    # We put precedence on AND, which sort of counter-intuitevely means we have to split the query
+    # on ORs first, so the ANDs are grouped together. Search through the query for ORs and split the
+    # query on each OR.
+    parts = []
+    part = []
+    for term in terms:
+        if term == SearchBoolean.BOOLEAN_OR:
+            parts.append(part)
+            part = []
+        else:
+            part.append(term)
+    parts.append(part)
+
+    # We found an OR, recurse on the different groups
+    if len(parts) > 1:
+        operator = SNUBA_OR
+        terms = parts
+        recurse_function = convert_search_boolean_to_snuba_query
+    else:  # Found an AND, format the individual terms
+        operator = SNUBA_AND
+        terms = parts[0]
+        recurse_function = convert_snuba_condition_to_function
+
+    projects_to_filter = []
+    group_ids = []
+    havings = []
+    conditions = []
+    for term in terms:
+        condition, having, projects_to_filter, group_ids = recurse_function(term, params)
+        if condition:
+            conditions.append(condition)
+        if having:
+            havings.append(having)
+
+        projects_to_filter.extend(projects_to_filter)
+        group_ids.extend(group_ids)
+
+    # It's not possible to OR conditions (where clause) and havings (having clause)
+    if operator == SNUBA_OR and conditions and havings:
+        raise InvalidSearchQuery(
+            u"having an OR between aggregate filters and normal filters is invalid"
+        )
+
+    condition = [operator, conditions] if conditions else None
+    having = [operator, havings] if havings else None
+    return condition, having, projects_to_filter, group_ids
+
+
 def get_filter(query=None, params=None):
     """
     Returns an eventstore filter given the search text provided by the user and
@@ -908,103 +1101,42 @@ def get_filter(query=None, params=None):
         "group_ids": [],
     }
 
-    def to_list(value):
-        if isinstance(value, list):
-            return value
-        return [value]
-
-    # Used to avoid doing multiple conditions on project ID
     project_to_filter = None
-    for term in parsed_terms:
-        if isinstance(term, SearchFilter):
-            name = term.key.name
-            value = term.value.value
-            if name in (PROJECT_ALIAS, PROJECT_NAME_ALIAS):
-                project = None
-                try:
-                    project = Project.objects.get(id__in=params.get("project_id", []), slug=value)
-                except Exception:
-                    raise InvalidSearchQuery(
-                        u"Invalid query. Project {} does not exist or is not an actively selected project.".format(
-                            value
-                        )
-                    )
-
-                # Create a new search filter with the correct values
-                term = SearchFilter(SearchKey("project_id"), term.operator, SearchValue(project.id))
-                converted_filter = convert_search_filter_to_snuba_query(term)
-                if converted_filter:
-                    if term.operator == "=":
-                        project_to_filter = project.id
-
-                    kwargs["conditions"].append(converted_filter)
-            elif name == ISSUE_ID_ALIAS and value != "":
-                # A blank term value means that this is a has filter
-                kwargs["group_ids"].extend(to_list(value))
-            elif name == ISSUE_ALIAS:
-                if value != "" and params and "organization_id" in params:
-                    try:
-                        group = Group.objects.by_qualified_short_id(
-                            params["organization_id"], value
-                        )
-                    except Exception:
-                        raise InvalidSearchQuery(
-                            u"Invalid value '{}' for 'issue:' filter".format(value)
-                        )
-                    else:
-                        value = group.id
-                term = SearchFilter(SearchKey("issue.id"), term.operator, SearchValue(value))
-                converted_filter = convert_search_filter_to_snuba_query(term)
-                kwargs["conditions"].append(converted_filter)
-            elif name == USER_ALIAS:
-                # If the key is user, do an OR across all the different possible user fields
-                user_conditions = [
-                    convert_search_filter_to_snuba_query(term, key=field)
-                    for field in FIELD_ALIASES[USER_ALIAS]["fields"]
-                ]
-                if term.operator == "!=" and value != "":
-                    kwargs["conditions"].extend(user_conditions)
-                else:
-                    kwargs["conditions"].append(user_conditions)
-            elif name == RELEASE_ALIAS and params and value == "latest":
-                converted_filter = convert_search_filter_to_snuba_query(
-                    SearchFilter(
-                        term.key,
-                        term.operator,
-                        SearchValue(
-                            parse_release(
-                                value,
-                                params["project_id"],
-                                params.get("environment_objects"),
-                                params["organization_id"],
-                            )
-                        ),
-                    )
+    if any(
+        isinstance(term, ParenExpression) or SearchBoolean.is_operator(term)
+        for term in parsed_terms
+    ):
+        # TODO evanh: We can remove all top level ANDs and extend the conditions/having to
+        # avoid unnecesary nesting, e.g. [["and", [["and", [a, b]], ["and", [c, d]]]]] -> [a, b, c, d]
+        condition, having, found_project_to_filter, group_ids = format_search_boolean(
+            parsed_terms, params
+        )
+        if len(conditions) > 0:
+            kwargs["conditions"].append(condition)
+        if len(having) > 0:
+            kwargs["having"].append(having)
+        if found_project_to_filter:
+            project_to_filter = found_project_to_filter
+        if group_ids is not None:
+            kwargs["group_ids"].extend(group_ids)
+    else:
+        for term in parsed_terms:
+            if isinstance(term, SearchFilter):
+                conditions, found_project_to_filter, group_ids = format_search_filter(
+                    term, params
                 )
-                if converted_filter:
-                    kwargs["conditions"].append(converted_filter)
-            elif name in FIELD_ALIASES and name != PROJECT_ALIAS:
-                if "column_alias" in FIELD_ALIASES[name]:
-                    term = SearchFilter(
-                        SearchKey(FIELD_ALIASES[name]["column_alias"]), term.operator, term.value
-                    )
+                if len(conditions) > 0:
+                    kwargs["conditions"].extend(conditions)
+                if len(having) > 0:
+                    kwargs["having"].extend(having)
+                if found_project_to_filter:
+                    project_to_filter = found_project_to_filter
+                if group_ids is not None:
+                    kwargs["group_ids"].extend(group_ids)
+            elif isinstance(term, AggregateFilter):
                 converted_filter = convert_aggregate_filter_to_snuba_query(term, params)
                 if converted_filter:
-                    kwargs["conditions"].append(converted_filter)
-            else:
-                converted_filter = convert_search_filter_to_snuba_query(term)
-                if converted_filter:
-                    kwargs["conditions"].append(converted_filter)
-        elif isinstance(term, SearchBoolean):
-            condition_filter, having_filter = convert_search_boolean_to_snuba_query(term, params)
-            if condition_filter:
-                kwargs["conditions"].append(condition_filter)
-            if having_filter:
-                kwargs["having"].append(having_filter)
-        elif isinstance(term, AggregateFilter):
-            converted_filter = convert_aggregate_filter_to_snuba_query(term, params)
-            if converted_filter:
-                kwargs["having"].append(converted_filter)
+                    kwargs["having"].append(converted_filter)
 
     # Keys included as url params take precedent if same key is included in search
     # They are also considered safe and to have had access rules applied unlike conditions
