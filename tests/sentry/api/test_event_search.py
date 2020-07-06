@@ -1528,14 +1528,68 @@ class ParseBooleanSearchQueryTest(TestCase):
             assert [[test[1], "=", 1]] == result.conditions, "cond: " + test[0]
 
     def test_project_in_condition_filters(self):
+        def _eq(xy):
+            return ["equals", [["ifNull", [xy[0], "''"]], xy[1]]]
+
         project1 = self.create_project()
         project2 = self.create_project()
-        project3 = self.create_project()
         tests = [
             (
                 "project:{} OR project:{}".format(project1.slug, project2.slug),
-                [[["or", [["equals", ["project_id", 2]], ["equals", ["project_id", 3]]]], "=", 1]],
+                [
+                    [
+                        [
+                            "or",
+                            [
+                                ["equals", ["project_id", project1.id]],
+                                ["equals", ["project_id", project2.id]],
+                            ],
+                        ],
+                        "=",
+                        1,
+                    ]
+                ],
                 [project1.id, project2.id],
+            ),
+            (
+                "(project:{} OR project:{}) AND a:b".format(project1.slug, project2.slug),
+                [
+                    [
+                        [
+                            "and",
+                            [
+                                [
+                                    "or",
+                                    [
+                                        ["equals", ["project_id", project1.id]],
+                                        ["equals", ["project_id", project2.id]],
+                                    ],
+                                ],
+                                _eq("ab"),
+                            ],
+                        ],
+                        "=",
+                        1,
+                    ]
+                ],
+                [project1.id, project2.id],
+            ),
+            (
+                "(project:{} AND a:b) OR (project:{} AND c:d)".format(project1.slug, project1.slug),
+                [
+                    [
+                        [
+                            "or",
+                            [
+                                ["and", [["equals", ["project_id", project1.id]], _eq("ab")]],
+                                ["and", [["equals", ["project_id", project1.id]], _eq("cd")]],
+                            ],
+                        ],
+                        "=",
+                        1,
+                    ]
+                ],
+                [project1.id],
             ),
         ]
 
@@ -1544,21 +1598,76 @@ class ParseBooleanSearchQueryTest(TestCase):
                 test[0],
                 params={
                     "organization_id": self.organization.id,
-                    "project_id": [project1.id, project2.id, project3.id],
+                    "project_id": [project1.id, project2.id],
                 },
             )
-            assert test[1] == result.conditions
-            assert test[2] == result.project_ids
-        # Combine a bunch of these conditions with OR/AND/() to make sure we end up
-        # with the correct results at the end
-        # P OR P OR P -> conditions: None, project_ids = (P, P, P)
-        # (P OR P) AND C -> conditions: C, project_ids = (P, P)
-        # etc.
+            assert test[1] == result.conditions, test[0]
+            assert test[2] == result.project_ids, test[0]
 
-    def test_group_id_in_condition_filters(self):
-        # Make sure group_id conditions are properly combined
-        # Basically copy project checks from above
-        pass
+    def test_project_in_condition_filters_not_in_project_filter(self):
+        project1 = self.create_project()
+        project2 = self.create_project()
+        project3 = self.create_project()
+        with self.assertRaisesRegexp(
+            InvalidSearchQuery,
+            "Project {} does not exist or is not an actively selected project.".format(
+                project3.slug
+            ),
+        ):
+            get_filter(
+                "project:{} OR project:{}".format(project1.slug, project3.slug),
+                params={
+                    "organization_id": self.organization.id,
+                    "project_id": [project1.id, project2.id],
+                },
+            )
+
+    def test_issue_id_alias_in_condition_filters(self):
+        def _eq(xy):
+            return ["equals", [["ifNull", [xy[0], "''"]], xy[1]]]
+
+        group1 = self.create_group(project=self.project)
+        group2 = self.create_group(project=self.project)
+        group3 = self.create_group(project=self.project)
+        tests = [
+            (
+                "issue.id:{} OR issue.id:{}".format(group1.id, group2.id),
+                [],
+                [group1.id, group2.id],
+            ),
+            ("issue.id:{} AND issue.id:{}".format(group1.id, group1.id), [], [group1.id],),
+            (
+                "(issue.id:{} AND issue.id:{}) OR issue.id:{}".format(
+                    group1.id, group2.id, group3.id
+                ),
+                [],
+                [group1.id, group2.id, group3.id],
+            ),
+            ("issue.id:{} OR a:b".format(group1.id), [[["or", [_eq("ab")]], "=", 1]], [group1.id],),
+            (
+                "issue.id:{} AND a:b".format(group1.id),
+                [[["and", [_eq("ab")]], "=", 1]],
+                [group1.id],
+            ),
+            (
+                "(issue.id:{} AND a:b) OR issue.id:{}".format(group1.id, group2.id),
+                [[["or", [["and", [_eq("ab")]]]], "=", 1]],
+                [group1.id, group2.id],
+            ),
+            (
+                "(issue.id:{} AND a:b) OR c:d".format(group1.id),
+                [[["or", [["and", [_eq("ab")]], _eq("cd")]], "=", 1]],
+                [group1.id],
+            ),
+        ]
+
+        for test in tests:
+            result = get_filter(
+                test[0],
+                params={"organization_id": self.organization.id, "project_id": [self.project.id]},
+            )
+            assert test[1] == result.conditions, test[0]
+            assert test[2] == result.group_ids, test[0]
 
     def test_invalid_conditional_filters(self):
         # Invalid queries: OR C fail, C OR AND C fail, C AND C AND fail, AND fail

@@ -1082,9 +1082,9 @@ def get_filter(query=None, params=None):
         if having:
             kwargs["having"].append([having, "=", 1])
         if found_projects_to_filter:
-            projects_to_filter = found_projects_to_filter
+            projects_to_filter = list(set(found_projects_to_filter))
         if group_ids is not None:
-            kwargs["group_ids"].extend(group_ids)
+            kwargs["group_ids"].extend(list(set(group_ids)))
     else:
         for term in parsed_terms:
             if isinstance(term, SearchFilter):
