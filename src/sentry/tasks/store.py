@@ -13,11 +13,9 @@ from sentry_sdk.tracing import Span
 from sentry_relay.processing import StoreNormalizer
 
 from sentry import features, reprocessing, options
-from sentry.relay.config import get_project_config
 from sentry.datascrubbing import scrub_data
 from sentry.constants import DEFAULT_STORE_NORMALIZER_ARGS
 from sentry.attachments import attachment_cache
-from sentry.cache import default_cache
 from sentry.tasks.base import instrumented_task
 from sentry.utils import metrics
 from sentry.utils.safe import safe_execute
@@ -26,6 +24,7 @@ from sentry.utils.canonical import CanonicalKeyDict, CANONICAL_TYPES
 from sentry.utils.dates import to_datetime
 from sentry.utils.sdk import set_current_project
 from sentry.models import ProjectOption, Activity, Project, Organization
+from sentry.eventstore.processing import event_processing_store
 
 error_logger = logging.getLogger("sentry.errors.events")
 info_logger = logging.getLogger("sentry.store")
@@ -110,7 +109,7 @@ def _do_preprocess_event(cache_key, data, start_time, event_id, process_task, pr
     from sentry.lang.native.processing import should_process_with_symbolicator
 
     if cache_key and data is None:
-        data = default_cache.get(cache_key)
+        data = event_processing_store.get(cache_key)
 
     if data is None:
         metrics.incr("events.failed", tags={"reason": "cache", "stage": "pre"}, skip_internal=False)
@@ -192,7 +191,7 @@ def _do_symbolicate_event(cache_key, start_time, event_id, symbolicate_task, dat
     from sentry.lang.native.processing import get_symbolication_function
 
     if data is None:
-        data = default_cache.get(cache_key)
+        data = event_processing_store.get(cache_key)
 
     if data is None:
         metrics.incr(
@@ -269,7 +268,7 @@ def _do_symbolicate_event(cache_key, start_time, event_id, symbolicate_task, dat
         data = dict(data.items())
 
     if has_changed:
-        default_cache.set(cache_key, data, 3600)
+        cache_key = event_processing_store.store(data)
 
     process_task = process_event_from_reprocessing if from_reprocessing else process_event
     _do_process_event(
@@ -396,7 +395,7 @@ def _do_process_event(
     from sentry.plugins.base import plugins
 
     if data is None:
-        data = default_cache.get(cache_key)
+        data = event_processing_store.get(cache_key)
 
     if data is None:
         metrics.incr(
@@ -456,22 +455,18 @@ def _do_process_event(
     # We are fairly confident, however, that this should run *before*
     # re-normalization as it is hard to find sensitive data in partially
     # trimmed strings.
-    if (
-        has_changed
-        and options.get("processing.can-use-scrubbers")
-        and features.has("organizations:datascrubbers-v2", project.organization, actor=None)
-    ):
+    if has_changed and options.get("processing.can-use-scrubbers"):
         with sentry_sdk.start_span(op="task.store.datascrubbers.scrub"):
             with metrics.timer(
                 "tasks.store.datascrubbers.scrub", tags={"from_symbolicate": from_symbolicate}
             ):
-                project_config = get_project_config(project)
-
-                new_data = safe_execute(scrub_data, project_config=project_config, event=data.data)
+                new_data = safe_execute(scrub_data, project=project, event=data.data)
 
                 # XXX(markus): When datascrubbing is finally "totally stable", we might want
                 # to drop the event if it crashes to avoid saving PII
-                if new_data is not None:
+                if new_data is not None and features.has(
+                    "organizations:datascrubbers-v2", project.organization, actor=None
+                ):
                     data.data = new_data
 
     # TODO(dcramer): ideally we would know if data changed by default
@@ -536,7 +531,7 @@ def _do_process_event(
             _do_preprocess_event(cache_key, data, start_time, event_id, process_task, project)
             return
 
-        default_cache.set(cache_key, data, 3600)
+        cache_key = event_processing_store.store(data)
 
     submit_save_event(project, cache_key, event_id, start_time, data)
 
@@ -678,7 +673,7 @@ def create_failed_event(
     # from the last processing step because we do not want any
     # modifications to take place.
     delete_raw_event(project_id, event_id)
-    data = default_cache.get(cache_key)
+    data = event_processing_store.get(cache_key)
     if data is None:
         metrics.incr("events.failed", tags={"reason": "cache", "stage": "raw"}, skip_internal=False)
         error_logger.error("process.failed_raw.empty", extra={"cache_key": cache_key})
@@ -703,7 +698,7 @@ def create_failed_event(
             data=issue["data"],
         )
 
-    default_cache.delete(cache_key)
+    event_processing_store.delete_by_key(cache_key)
 
     return True
 
@@ -723,7 +718,7 @@ def _do_save_event(
 
     if cache_key and data is None:
         with metrics.timer("tasks.store.do_save_event.get_cache") as metric_tags:
-            data = default_cache.get(cache_key)
+            data = event_processing_store.get(cache_key)
             if data is not None:
                 metric_tags["event_type"] = event_type = data.get("type") or "none"
 
@@ -763,12 +758,11 @@ def _do_save_event(
             )
             return
 
-        event = None
         try:
             with metrics.timer("tasks.store.do_save_event.event_manager.save"):
                 manager = EventManager(data)
                 # event.project.organization is populated after this statement.
-                event = manager.save(
+                manager.save(
                     project_id, assume_normalized=True, start_time=start_time, cache_key=cache_key
                 )
 
@@ -778,15 +772,10 @@ def _do_save_event(
         finally:
             if cache_key:
                 with metrics.timer("tasks.store.do_save_event.delete_cache"):
-                    default_cache.delete(cache_key)
+                    event_processing_store.delete_by_key(cache_key)
 
                 with metrics.timer("tasks.store.do_save_event.delete_attachment_cache"):
-                    # For the unlikely case that we did not manage to persist the
-                    # event we also delete the key always.
-                    if event is None or features.has(
-                        "organizations:event-attachments", event.project.organization, actor=None
-                    ):
-                        attachment_cache.delete(cache_key)
+                    attachment_cache.delete(cache_key)
 
             if start_time:
                 metrics.timing(

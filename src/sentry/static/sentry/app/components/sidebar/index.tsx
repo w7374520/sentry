@@ -5,7 +5,7 @@ import React from 'react';
 import Reflux from 'reflux';
 import createReactClass from 'create-react-class';
 import isEqual from 'lodash/isEqual';
-import queryString from 'query-string';
+import * as queryString from 'query-string';
 import styled from '@emotion/styled';
 
 import {
@@ -25,15 +25,14 @@ import {
   IconTelescope,
 } from 'app/icons';
 import {extractSelectionParameters} from 'app/components/organizations/globalSelectionHeader/utils';
-import {getDiscoverLandingUrl} from 'app/views/eventsV2/utils';
 import {hideSidebar, showSidebar} from 'app/actionCreators/preferences';
 import {t} from 'app/locale';
 import ConfigStore from 'app/stores/configStore';
 import Feature from 'app/components/acl/feature';
-import GuideAnchor from 'app/components/assistant/guideAnchor';
 import HookStore from 'app/stores/hookStore';
 import PreferencesStore from 'app/stores/preferencesStore';
 import localStorage from 'app/utils/localStorage';
+import {getDiscoverLandingUrl} from 'app/utils/discover/urls';
 import space from 'app/styles/space';
 import theme from 'app/utils/theme';
 import withOrganization from 'app/utils/withOrganization';
@@ -384,24 +383,26 @@ class Sidebar extends React.Component<Props, State> {
                       features={['discover-basic']}
                       organization={organization}
                     >
-                      <GuideAnchor position="right" target="discover_sidebar">
-                        <SidebarItem
-                          {...sidebarItemProps}
-                          onClick={(_id, evt) =>
-                            this.navigateWithGlobalSelection(
-                              getDiscoverLandingUrl(organization),
-                              evt
-                            )
-                          }
-                          icon={<IconTelescope size="md" />}
-                          label={t('Discover')}
-                          to={getDiscoverLandingUrl(organization)}
-                          id="discover-v2"
-                        />
-                      </GuideAnchor>
+                      <SidebarItem
+                        {...sidebarItemProps}
+                        onClick={(_id, evt) =>
+                          this.navigateWithGlobalSelection(
+                            getDiscoverLandingUrl(organization),
+                            evt
+                          )
+                        }
+                        icon={<IconTelescope size="md" />}
+                        label={t('Discover')}
+                        to={getDiscoverLandingUrl(organization)}
+                        id="discover-v2"
+                      />
                     </Feature>
                   )}
-                  <Feature features={['performance-view']} organization={organization}>
+                  <Feature
+                    hookName="feature-disabled:performance-sidebar-item"
+                    features={['performance-view']}
+                    organization={organization}
+                  >
                     <SidebarItem
                       {...sidebarItemProps}
                       onClick={(_id, evt) =>

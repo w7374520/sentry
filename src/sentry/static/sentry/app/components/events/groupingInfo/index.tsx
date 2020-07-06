@@ -62,7 +62,7 @@ class EventGroupingInfo extends AsyncComponent<Props, State> {
   renderGroupInfoSummary() {
     const {groupInfo} = this.state;
 
-    if (groupInfo === null) {
+    if (!groupInfo) {
       return null;
     }
 
@@ -100,13 +100,15 @@ class EventGroupingInfo extends AsyncComponent<Props, State> {
     const {groupInfo, loading} = this.state;
     const {showGroupingConfig} = this.props;
 
-    const variants = Object.values(groupInfo).sort((a, b) =>
-      a.hash && !b.hash
-        ? -1
-        : a.description
-            ?.toLowerCase()
-            .localeCompare(b.description?.toLowerCase() ?? '') ?? 1
-    );
+    const variants = groupInfo
+      ? Object.values(groupInfo).sort((a, b) =>
+          a.hash && !b.hash
+            ? -1
+            : a.description
+                ?.toLowerCase()
+                .localeCompare(b.description?.toLowerCase() ?? '') ?? 1
+        )
+      : [];
 
     return (
       <React.Fragment>

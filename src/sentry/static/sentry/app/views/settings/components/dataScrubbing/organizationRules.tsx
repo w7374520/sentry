@@ -33,9 +33,7 @@ class OrganizationRules extends React.Component<Props, State> {
     if (!this.state.contentHeight) {
       const contentHeight = this.rulesListRef.current?.offsetHeight;
       if (contentHeight) {
-        this.setState({
-          contentHeight: `${contentHeight}px`,
-        });
+        this.setState({contentHeight: `${contentHeight}px`});
       }
     }
   };
@@ -62,7 +60,7 @@ class OrganizationRules extends React.Component<Props, State> {
         <Header onClick={this.handleToggleCollapsed}>
           <div>{t('Organization Rules')}</div>
           <Button
-            label={
+            title={
               isCollapsed
                 ? t('Expand Organization Rules')
                 : t('Collapse Organization Rules')

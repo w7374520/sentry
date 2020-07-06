@@ -11,7 +11,7 @@ type SelectControlProps = React.ComponentProps<typeof SelectControl>;
 
 type Props = Pick<
   SelectControlProps,
-  'value' | 'placeholder' | 'name' | 'onChange' | 'options' | 'isDisabled'
+  'value' | 'placeholder' | 'name' | 'onChange' | 'options'
 >;
 
 class SelectField extends React.Component<Props> {
@@ -35,8 +35,8 @@ class SelectField extends React.Component<Props> {
         styles={{
           control: (provided: {[x: string]: string | number | boolean}) => ({
             ...provided,
-            minHeight: '40px',
-            height: '40px',
+            minHeight: '38px',
+            height: '38px',
           }),
         }}
         ref={this.selectRef}
@@ -59,7 +59,6 @@ class SelectField extends React.Component<Props> {
           ),
         }}
         openOnFocus
-        required
       />
     );
   }

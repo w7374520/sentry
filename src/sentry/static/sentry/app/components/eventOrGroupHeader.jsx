@@ -160,12 +160,12 @@ const iconStyles = css`
 
 const Muted = styled('span')`
   ${iconStyles};
-  color: ${p => p.theme.red};
+  color: ${p => p.theme.red400};
 `;
 
 const Starred = styled('span')`
   ${iconStyles};
-  color: ${p => p.theme.yellowOrange};
+  color: ${p => p.theme.orange300};
 `;
 
 const GroupLevel = styled('div')`
@@ -178,15 +178,15 @@ const GroupLevel = styled('div')`
   background-color: ${p => {
     switch (p.level) {
       case 'sample':
-        return p.theme.purple;
+        return p.theme.purple400;
       case 'info':
         return p.theme.blue400;
       case 'warning':
-        return p.theme.yellowOrange;
+        return p.theme.yellow400;
       case 'error':
-        return p.theme.orange;
+        return p.theme.orange400;
       case 'fatal':
-        return p.theme.red;
+        return p.theme.red400;
       default:
         return p.theme.gray500;
     }

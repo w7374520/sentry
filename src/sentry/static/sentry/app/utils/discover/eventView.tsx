@@ -534,6 +534,22 @@ class EventView {
     return decodeColumnOrder(this.fields);
   }
 
+  getDays(): number {
+    const statsPeriod = decodeScalar(this.statsPeriod);
+
+    if (statsPeriod && statsPeriod.endsWith('d')) {
+      return parseInt(statsPeriod.slice(0, -1), 10);
+    } else if (statsPeriod && statsPeriod.endsWith('h')) {
+      return parseInt(statsPeriod.slice(0, -1), 10) / 24;
+    } else if (this.start && this.end) {
+      return (
+        (new Date(this.end).getTime() - new Date(this.start).getTime()) /
+        (24 * 60 * 60 * 1000)
+      );
+    }
+    return 0;
+  }
+
   clone(): EventView {
     // NOTE: We rely on usage of Readonly from TypeScript to ensure we do not mutate
     //       the attributes of EventView directly. This enables us to quickly
@@ -960,7 +976,8 @@ class EventView {
       this.getAggregateFields()
         // Exclude last_seen and latest_event as they don't produce useful graphs.
         .filter(
-          (field: Field) => ['last_seen', 'latest_event'].includes(field.field) === false
+          (field: Field) =>
+            ['last_seen()', 'latest_event()'].includes(field.field) === false
         )
         .map((field: Field) => ({label: field.field, value: field.field}))
         .concat(CHART_AXIS_OPTIONS),
@@ -990,7 +1007,7 @@ class EventView {
     return defaultOption;
   }
 
-  getDisplayOptions() {
+  getDisplayOptions(): SelectValue<string>[] {
     if (!this.start && !this.end) {
       return DISPLAY_MODE_OPTIONS;
     }
@@ -1000,6 +1017,15 @@ class EventView {
       }
       return item;
     });
+  }
+
+  getDisplayMode() {
+    const displayOptions = this.getDisplayOptions();
+    const selectedOption = displayOptions.find(option => option.value === this.display);
+    if (selectedOption && !selectedOption.disabled) {
+      return this.display ?? DisplayModes.DEFAULT;
+    }
+    return DisplayModes.DEFAULT;
   }
 }
 

@@ -146,6 +146,23 @@ class OrganizationTagKeyValuesTest(OrganizationTagKeyTestCase):
         self.store_event(data={"timestamp": iso_format(self.day_ago)}, project_id=other_project.id)
         self.run_test("project.id", expected=[])
 
+    def test_project_name(self):
+        other_org = self.create_organization()
+        other_project = self.create_project(organization=other_org)
+        self.store_event(data={"timestamp": iso_format(self.day_ago)}, project_id=self.project.id)
+        self.store_event(data={"timestamp": iso_format(self.min_ago)}, project_id=self.project.id)
+        self.store_event(data={"timestamp": iso_format(self.day_ago)}, project_id=other_project.id)
+        self.run_test("project", expected=[(self.project.slug, 2)])
+
+    def test_project_name_with_query(self):
+        other_project = self.create_project(organization=self.org, name="test1")
+        other_project2 = self.create_project(organization=self.org, name="test2")
+        self.store_event(data={"timestamp": iso_format(self.day_ago)}, project_id=other_project.id)
+        self.store_event(data={"timestamp": iso_format(self.min_ago)}, project_id=other_project.id)
+        self.store_event(data={"timestamp": iso_format(self.day_ago)}, project_id=other_project2.id)
+        self.run_test("project", qs_params={"query": "test"}, expected=[("test1", 2), ("test2", 1)])
+        self.run_test("project", qs_params={"query": "1"}, expected=[("test1", 2)])
+
     def test_array_column(self):
         for i in range(3):
             self.store_event(
@@ -160,12 +177,8 @@ class OrganizationTagKeyValuesTest(OrganizationTagKeyTestCase):
 class TransactionTagKeyValues(OrganizationTagKeyTestCase):
     def setUp(self):
         super(TransactionTagKeyValues, self).setUp()
-        data = load_data("transaction")
-        data["timestamp"] = iso_format(before_now(minutes=1))
-        data["start_timestamp"] = iso_format(before_now(minutes=1, seconds=5))
-        self.store_event(
-            data, project_id=self.project.id,
-        )
+        data = load_data("transaction", timestamp=before_now(minutes=1))
+        self.store_event(data, project_id=self.project.id)
         self.transaction = data.copy()
         self.transaction.update(
             {
@@ -193,17 +206,17 @@ class TransactionTagKeyValues(OrganizationTagKeyTestCase):
         )
 
     def test_op(self):
-        self.run_test("transaction.op", expected=[("bar.server", 1), ("foobar", 1)])
+        self.run_test("transaction.op", expected=[("bar.server", 1), ("http.server", 1)])
         self.run_test(
             "transaction.op",
-            qs_params={"query": "bar"},
-            expected=[("bar.server", 1), ("foobar", 1)],
+            qs_params={"query": "server"},
+            expected=[("bar.server", 1), ("http.server", 1)],
         )
-        self.run_test("transaction.op", qs_params={"query": "server"}, expected=[("bar.server", 1)])
+        self.run_test("transaction.op", qs_params={"query": "bar"}, expected=[("bar.server", 1)])
 
     def test_duration(self):
-        self.run_test("transaction.duration", expected=[("5000", 2)])
-        self.run_test("transaction.duration", qs_params={"query": "5001"}, expected=[("5000", 2)])
+        self.run_test("transaction.duration", expected=[("5000", 1), ("2000", 1)])
+        self.run_test("transaction.duration", qs_params={"query": "5001"}, expected=[("5000", 1)])
         self.run_test("transaction.duration", qs_params={"query": "50"}, expected=[])
 
     def test_transaction_title(self):

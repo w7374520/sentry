@@ -5,7 +5,6 @@ import * as PopperJS from 'popper.js';
 import {Manager, Reference, Popper} from 'react-popper';
 
 import {t} from 'app/locale';
-import {defined} from 'app/utils';
 import {IconEllipsis} from 'app/icons';
 import space from 'app/styles/space';
 import {getAggregateAlias} from 'app/utils/discover/fields';
@@ -19,6 +18,7 @@ export enum Actions {
   SHOW_LESS_THAN = 'show_less_than',
   TRANSACTION = 'transaction',
   RELEASE = 'release',
+  DRILLDOWN = 'drilldown',
 }
 
 type Props = {
@@ -119,7 +119,11 @@ class CellAction extends React.Component<Props, State> {
       }
     }
 
-    if (column.type !== 'duration') {
+    if (
+      column.type !== 'duration' &&
+      column.type !== 'number' &&
+      column.type !== 'percentage'
+    ) {
       addMenuItem(
         Actions.ADD,
         <ActionItem
@@ -143,7 +147,7 @@ class CellAction extends React.Component<Props, State> {
       );
     }
 
-    if (column.type !== 'string' && column.type !== 'boolean') {
+    if (['date', 'duration', 'integer', 'number', 'percentage'].includes(column.type)) {
       addMenuItem(
         Actions.SHOW_GREATER_THAN,
         <ActionItem
@@ -189,6 +193,22 @@ class CellAction extends React.Component<Props, State> {
           onClick={() => handleCellAction(Actions.RELEASE, value)}
         >
           {t('Go to release')}
+        </ActionItem>
+      );
+    }
+
+    if (
+      column.column.kind === 'function' &&
+      column.column.function[0] === 'count_unique'
+    ) {
+      addMenuItem(
+        Actions.DRILLDOWN,
+        <ActionItem
+          key="drilldown"
+          data-test-id="per-cell-drilldown"
+          onClick={() => handleCellAction(Actions.DRILLDOWN, value)}
+        >
+          {t('View Stacks')}
         </ActionItem>
       );
     }
@@ -274,21 +294,6 @@ class CellAction extends React.Component<Props, State> {
   render() {
     const {children} = this.props;
     const {isHovering} = this.state;
-
-    const {dataRow, column} = this.props;
-    const fieldAlias = getAggregateAlias(column.name);
-    const value = dataRow[fieldAlias];
-
-    // do not display per cell actions for count() and count_unique()
-    const shouldIgnoreColumn =
-      column.column.kind === 'function' &&
-      (column.column.function[0] === 'count' ||
-        column.column.function[0] === 'count_unique');
-
-    if (!defined(value) || shouldIgnoreColumn) {
-      // per cell actions do not apply to values that are null
-      return <React.Fragment>{children}</React.Fragment>;
-    }
 
     return (
       <Container

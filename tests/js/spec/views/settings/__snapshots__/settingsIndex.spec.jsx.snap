@@ -184,9 +184,9 @@ exports[`SettingsIndex renders 1`] = `
             isCentered={true}
           >
             <HomeIcon
-              color="orange"
+              color="orange400"
             >
-              <ForwardRef
+              <IconDocs
                 size="lg"
               />
             </HomeIcon>
@@ -238,9 +238,9 @@ exports[`SettingsIndex renders 1`] = `
             to="/settings/org-slug/support"
           >
             <HomeIcon
-              color="purple"
+              color="purple400"
             >
-              <ForwardRef
+              <IconSupport
                 size="lg"
               />
             </HomeIcon>
@@ -287,7 +287,7 @@ exports[`SettingsIndex renders 1`] = `
             to="/settings/account/api/"
           >
             <HomeIcon>
-              <ForwardRef
+              <IconLock
                 size="lg"
               />
             </HomeIcon>

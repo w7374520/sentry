@@ -106,20 +106,15 @@ export const StyledInlineSvg = styled(InlineSvg)`
 
 export const DiscoverDocs = styled('span')`
   align-items: center;
-  display: flex;
+  display: grid;
+  grid-gap: ${space(1)};
+  grid-template-columns: min-content auto min-content;
   margin: 25px ${space(3)};
-  justify-content: space-between;
 `;
 
 export const DocsLabel = styled('span')`
   font-size: 15px;
   flex-grow: 1;
-`;
-
-export const DocsIcon = styled(InlineSvg)`
-  width: 20px;
-  height: 20px;
-  margin-right: 8px;
 `;
 
 export const Body = styled('div')`
@@ -212,7 +207,7 @@ export const ButtonSpinner = styled('div')`
   border-top: 2px solid ${p => p.theme.borderLight};
   border-right: 2px solid ${p => p.theme.borderLight};
   border-bottom: 2px solid ${p => p.theme.borderLight};
-  border-left: 2px solid ${p => p.theme.purple};
+  border-left: 2px solid ${p => p.theme.purple400};
   margin-left: 4px;
 `;
 

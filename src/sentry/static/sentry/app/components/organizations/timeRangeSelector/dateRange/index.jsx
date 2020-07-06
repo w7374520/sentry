@@ -4,9 +4,9 @@ import 'react-date-range/dist/theme/default.css';
 import {DateRangePicker} from 'react-date-range';
 import PropTypes from 'prop-types';
 import React from 'react';
-import * as Sentry from '@sentry/browser';
 import moment from 'moment';
 import styled from '@emotion/styled';
+import * as Sentry from '@sentry/react';
 
 import {addErrorMessage} from 'app/actionCreators/indicator';
 import {analytics} from 'app/utils/analytics';
@@ -26,6 +26,11 @@ import space from 'app/styles/space';
 import theme from 'app/utils/theme';
 
 class DateRange extends React.Component {
+  static getTimeStringFromDate = date =>
+    moment(date)
+      .local()
+      .format('HH:mm');
+
   static propTypes = {
     /**
      * Start date value for absolute date selector
@@ -74,20 +79,15 @@ class DateRange extends React.Component {
     organization: SentryTypes.Organization,
   };
 
+  static contextTypes = {
+    router: PropTypes.object,
+  };
+
   static defaultProps = {
     showAbsolute: true,
     showRelative: false,
     maxPickableDays: MAX_PICKABLE_DAYS,
   };
-
-  static contextTypes = {
-    router: PropTypes.object,
-  };
-
-  static getTimeStringFromDate = date =>
-    moment(date)
-      .local()
-      .format('HH:mm');
 
   handleSelectDateRange = ({selection}) => {
     const {onChange} = this.props;
@@ -195,7 +195,7 @@ class DateRange extends React.Component {
     return (
       <div className={className} data-test-id="date-range">
         <StyledDateRangePicker
-          rangeColors={[theme.purple]}
+          rangeColors={[theme.purple400]}
           ranges={[
             {
               startDate: moment(start).local(),

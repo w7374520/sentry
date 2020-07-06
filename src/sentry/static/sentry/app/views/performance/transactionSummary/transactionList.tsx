@@ -10,6 +10,7 @@ import DiscoverButton from 'app/components/discoverButton';
 import DropdownControl, {DropdownItem} from 'app/components/dropdownControl';
 import PanelTable from 'app/components/panels/panelTable';
 import Link from 'app/components/links/link';
+import LoadingIndicator from 'app/components/loadingIndicator';
 import {TableData, TableDataRow, TableColumn} from 'app/views/eventsV2/table/types';
 import HeaderCell from 'app/views/eventsV2/table/headerCell';
 import EventView, {MetaType} from 'app/utils/discover/eventView';
@@ -35,7 +36,7 @@ type WrapperProps = {
   transactionName: string;
 };
 
-class TransactionList extends React.PureComponent<WrapperProps> {
+class TransactionList extends React.Component<WrapperProps> {
   getTransactionSort(location: Location) {
     const urlParam = decodeScalar(location.query.showTransactions) || 'slowest';
     const option =
@@ -250,6 +251,9 @@ class TransactionTable extends React.PureComponent<Props> {
     const hasResults =
       tableData && tableData.data && tableData.meta && tableData.data.length > 0;
 
+    // Custom set the height so we don't have layout shift when results are loaded.
+    const loader = <LoadingIndicator style={{margin: '70px auto'}} />;
+
     return (
       <React.Fragment>
         <PanelTable
@@ -258,6 +262,7 @@ class TransactionTable extends React.PureComponent<Props> {
           headers={this.renderHeader()}
           isLoading={isLoading}
           disablePadding
+          loader={loader}
         >
           {this.renderResults()}
         </PanelTable>

@@ -77,6 +77,7 @@ export type AnalyticsHooks = {
  * rendered in place for Feature components when the feature is not enabled.
  */
 export type FeatureDisabledHooks = {
+  'feature-disabled:alerts-page': FeatureDisabledHook;
   'feature-disabled:custom-inbound-filters': FeatureDisabledHook;
   'feature-disabled:custom-symbol-sources': FeatureDisabledHook;
   'feature-disabled:data-forwarding': FeatureDisabledHook;
@@ -90,6 +91,7 @@ export type FeatureDisabledHooks = {
   'feature-disabled:events-sidebar-item': FeatureDisabledHook;
   'feature-disabled:grid-editable-actions': FeatureDisabledHook;
   'feature-disabled:performance-page': FeatureDisabledHook;
+  'feature-disabled:performance-sidebar-item': FeatureDisabledHook;
   'feature-disabled:project-selector-checkbox': FeatureDisabledHook;
   'feature-disabled:rate-limits': FeatureDisabledHook;
   'feature-disabled:sso-basic': FeatureDisabledHook;

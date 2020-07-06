@@ -6,15 +6,16 @@ import {css} from '@emotion/core';
 import {t} from 'app/locale';
 import {callIfFunction} from 'app/utils/callIfFunction';
 import {DataSection} from 'app/components/events/styles';
+import {IconAnchor} from 'app/icons/iconAnchor';
 import Button from 'app/components/button';
 import ButtonBar from 'app/components/buttonBar';
 import space from 'app/styles/space';
-import {IconAnchor} from 'app/icons/iconAnchor';
 
 const defaultProps = {
   wrapTitle: true,
   raw: false,
   isCentered: false,
+  showPermalink: true,
 };
 
 type DefaultProps = Readonly<typeof defaultProps>;
@@ -70,6 +71,7 @@ class EventDataSection extends React.Component<Props> {
       wrapTitle,
       actions,
       isCentered,
+      showPermalink,
     } = this.props;
 
     const titleNode = wrapTitle ? <h3>{title}</h3> : title;
@@ -78,10 +80,14 @@ class EventDataSection extends React.Component<Props> {
       <DataSection className={className || ''}>
         {title && (
           <SectionHeader id={type} isCentered={isCentered}>
-            <Permalink href={'#' + type} className="permalink">
-              <IconAnchor />
-            </Permalink>
-            {titleNode}
+            {showPermalink ? (
+              <Permalink href={'#' + type} className="permalink">
+                <StyledIconAnchor />
+                {titleNode}
+              </Permalink>
+            ) : (
+              <div>{titleNode}</div>
+            )}
             {type === 'extra' && (
               <ButtonBar merged active={raw ? 'raw' : 'formatted'}>
                 <Button
@@ -109,20 +115,23 @@ class EventDataSection extends React.Component<Props> {
   }
 }
 
-const Permalink = styled('a')`
+const StyledIconAnchor = styled(IconAnchor)`
   display: none;
   position: absolute;
   top: 4px;
   left: -22px;
-  color: ${p => p.theme.gray500};
-  width: 100%;
+`;
+
+const Permalink = styled('a')`
+  :hover ${StyledIconAnchor} {
+    display: block;
+    color: ${p => p.theme.gray500};
+  }
 `;
 
 const SectionHeader = styled('div')<{isCentered?: boolean}>`
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  position: relative;
   margin-bottom: ${space(3)};
 
   & h3,
@@ -152,13 +161,8 @@ const SectionHeader = styled('div')<{isCentered?: boolean}>`
   }
   & small a {
     color: ${p => p.theme.gray700};
-    border-bottom: 1px dotted ${p => p.theme.gray400};
+    border-bottom: 1px dotted ${p => p.theme.borderDark};
     font-weight: normal;
-  }
-
-  &:hover ${Permalink} {
-    color: ${p => p.theme.gray500};
-    display: block;
   }
 
   @media (min-width: ${props => props.theme.breakpoints[2]}) {
@@ -176,6 +180,11 @@ const SectionHeader = styled('div')<{isCentered?: boolean}>`
         display: block;
       }
     `}
+
+  >*:first-child {
+    position: relative;
+    flex-grow: 1;
+  }
 `;
 
 const SectionContents = styled('div')`

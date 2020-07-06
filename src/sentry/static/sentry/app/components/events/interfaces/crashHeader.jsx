@@ -186,29 +186,14 @@ const Wrapper = styled('div')`
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
-  width: 100%;
 `;
 
-const TitleWrapper = styled('div')`
+const TitleWrapper = styled('span')`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  > * {
-    margin-bottom: ${space(0.5)};
-    :last-child {
-      margin-bottom: 0;
-    }
-  }
-
-  @media (min-width: ${props => props.theme.breakpoints[0]}) {
-    > * {
-      margin-right: ${space(0.5)};
-      margin-bottom: 0;
-      :last-child {
-        margin-right: ${space(1)};
-      }
-    }
-  }
+  flex-grow: 1;
+  justify-content: flex-start;
 `;
 
 const ButtonGroup = styled(ButtonBar)`

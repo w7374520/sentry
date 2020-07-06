@@ -2,22 +2,17 @@ import React from 'react';
 import styled from '@emotion/styled';
 import isEqual from 'lodash/isEqual';
 
-import TextField from 'app/components/forms/textField';
+import Input from 'app/views/settings/components/forms/controls/input';
 import {t} from 'app/locale';
 import space from 'app/styles/space';
+import Field from 'app/views/settings/components/forms/field';
 
-import FormField from './formField';
-import EventIdFieldStatusIconStatusIcon from './eventIdFieldStatusIcon';
-import {EventIdStatus} from '../types';
-
-type EventId = {
-  value: string;
-  status?: EventIdStatus;
-};
+import EventIdFieldStatusIcon from './eventIdFieldStatusIcon';
+import {EventIdStatus, EventId} from '../types';
 
 type Props = {
   onUpdateEventId: (eventId: string) => void;
-  eventId: EventId;
+  eventId?: EventId;
   disabled?: boolean;
 };
 
@@ -28,8 +23,8 @@ type State = {
 
 class EventIdField extends React.Component<Props, State> {
   state = {
-    value: this.props.eventId.value,
-    status: this.props.eventId.status,
+    value: this.props.eventId?.value || '',
+    status: this.props.eventId?.status,
   };
 
   componentDidUpdate(prevProps: Props) {
@@ -44,8 +39,8 @@ class EventIdField extends React.Component<Props, State> {
     });
   };
 
-  handleChange = (value: string) => {
-    const eventId = value.replace(/-/g, '').trim();
+  handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const eventId = event.target.value.replace(/-/g, '').trim();
 
     if (eventId !== this.state.value) {
       this.setState({
@@ -111,14 +106,20 @@ class EventIdField extends React.Component<Props, State> {
     const {value, status} = this.state;
 
     return (
-      <FormField
+      <Field
         label={t('Event ID (Optional)')}
-        tooltipInfo={t(
+        help={t(
           'Providing an event ID will automatically provide you a list of suggested sources'
         )}
+        inline={false}
+        error={this.getErrorMessage()}
+        flexibleControlStateSize
+        stacked
+        showHelpInTooltip
       >
-        <EventIdFieldWrapper>
-          <StyledTextField
+        <FieldWrapper>
+          <StyledInput
+            type="text"
             name="eventId"
             disabled={disabled}
             value={value}
@@ -126,27 +127,24 @@ class EventIdField extends React.Component<Props, State> {
             onChange={this.handleChange}
             onKeyDown={this.handleKeyDown}
             onBlur={this.handleBlur}
-            showStatus={status !== EventIdStatus.LOADED}
-            error={this.getErrorMessage()}
           />
           <Status>
-            <EventIdFieldStatusIconStatusIcon
+            <EventIdFieldStatusIcon
               onClickIconClose={this.handleClickIconClose}
               status={status}
             />
           </Status>
-        </EventIdFieldWrapper>
-      </FormField>
+        </FieldWrapper>
+      </Field>
     );
   }
 }
 export default EventIdField;
 
-const StyledTextField = styled(TextField)<{showStatus: boolean}>`
+const StyledInput = styled(Input)<{showStatus: boolean}>`
   flex: 1;
   font-weight: 400;
   input {
-    height: 40px;
     padding-right: ${p => (p.showStatus ? space(4) : space(1.5))};
   }
   margin-bottom: 0;
@@ -161,7 +159,7 @@ const Status = styled('div')`
   align-items: center;
 `;
 
-const EventIdFieldWrapper = styled('div')`
+const FieldWrapper = styled('div')`
   position: relative;
   display: flex;
   align-items: center;

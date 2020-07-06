@@ -12,13 +12,13 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import Reflux from 'reflux';
 import * as Router from 'react-router';
-import * as Sentry from '@sentry/browser';
-import {ExtraErrorData} from '@sentry/integrations';
-import {Integrations} from '@sentry/apm';
 import SentryRRWeb from '@sentry/rrweb';
 import createReactClass from 'create-react-class';
 import jQuery from 'jquery';
 import moment from 'moment';
+import {Integrations} from '@sentry/apm';
+import {ExtraErrorData} from '@sentry/integrations';
+import * as Sentry from '@sentry/react';
 
 import {metric} from 'app/utils/analytics';
 import {init as initApiSentryClient} from 'app/utils/apiSentryClient';
@@ -29,11 +29,29 @@ import plugins from 'app/plugins';
 import routes from 'app/routes';
 import {normalizeTransactionName} from 'app/utils/apm';
 
+import {setupFavicon} from './favicon';
+
 if (process.env.NODE_ENV === 'development') {
   import(
     /* webpackChunkName: "SilenceReactUnsafeWarnings" */ /* webpackMode: "eager" */ 'app/utils/silence-react-unsafe-warnings'
   );
 }
+
+// App setup
+if (window.__initialData) {
+  ConfigStore.loadInitialData(window.__initialData);
+
+  if (window.__initialData.dsn_requests) {
+    initApiSentryClient(window.__initialData.dsn_requests);
+  }
+}
+
+// SDK INIT  --------------------------------------------------------
+const config = ConfigStore.getConfig();
+
+const tracesSampleRate = config ? config.apmSampling : 0;
+
+const appRoutes = Router.createRoutes(routes());
 
 function getSentryIntegrations(hasReplays: boolean = false) {
   const integrations = [
@@ -45,7 +63,10 @@ function getSentryIntegrations(hasReplays: boolean = false) {
       tracingOrigins: ['localhost', 'sentry.io', /^\//],
       debug: {
         spanDebugTimingInfo: true,
-        writeAsBreadcrumbs: true,
+        writeAsBreadcrumbs: false,
+      },
+      beforeNavigate: (location: Location) => {
+        return normalizeTransactionName(appRoutes, location);
       },
     }),
   ];
@@ -65,24 +86,8 @@ function getSentryIntegrations(hasReplays: boolean = false) {
   return integrations;
 }
 
-// App setup
-if (window.__initialData) {
-  ConfigStore.loadInitialData(window.__initialData);
-
-  if (window.__initialData.dsn_requests) {
-    initApiSentryClient(window.__initialData.dsn_requests);
-  }
-}
-
-// SDK INIT  --------------------------------------------------------
-const config = ConfigStore.getConfig();
-
-const tracesSampleRate = config ? config.apmSampling : 0;
-
 const hasReplays =
   window.__SENTRY__USER && window.__SENTRY__USER.isStaff && !!process.env.DISABLE_RR_WEB;
-
-const appRoutes = Router.createRoutes(routes());
 
 Sentry.init({
   ...window.__SENTRY__OPTIONS,
@@ -96,10 +101,6 @@ Sentry.init({
     : window.__SENTRY__OPTIONS.whitelistUrls,
   integrations: getSentryIntegrations(hasReplays),
   tracesSampleRate,
-});
-
-Sentry.addGlobalEventProcessor(async event => {
-  return normalizeTransactionName(appRoutes, event);
 });
 
 if (window.__SENTRY__USER) {
@@ -139,6 +140,10 @@ const render = (Component: React.ComponentType) => {
     }
   }
 };
+
+if (process.env.NODE_ENV === 'production') {
+  setupFavicon();
+}
 
 // The password strength component is very heavyweight as it includes the
 // zxcvbn, a relatively byte-heavy password strength estimation library. Load

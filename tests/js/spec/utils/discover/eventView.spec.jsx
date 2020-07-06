@@ -3,7 +3,11 @@ import EventView, {
   pickRelevantLocationQueryStrings,
 } from 'app/utils/discover/eventView';
 import {COL_WIDTH_UNDEFINED} from 'app/components/gridEditable/utils';
-import {CHART_AXIS_OPTIONS, DISPLAY_MODE_OPTIONS} from 'app/utils/discover/types';
+import {
+  CHART_AXIS_OPTIONS,
+  DisplayModes,
+  DISPLAY_MODE_OPTIONS,
+} from 'app/utils/discover/types';
 
 const generateFields = fields =>
   fields.map(field => ({
@@ -1165,6 +1169,37 @@ describe('EventView.numOfColumns()', function() {
   });
 });
 
+describe('EventView.getDays()', function() {
+  it('returns the right number of days for statsPeriod', function() {
+    const eventView = new EventView({
+      statsPeriod: '14d',
+    });
+
+    expect(eventView.getDays()).toBe(14);
+
+    const eventView2 = new EventView({
+      statsPeriod: '12h',
+    });
+
+    expect(eventView2.getDays()).toBe(0.5);
+  });
+
+  it('returns the right number of days for start/end', function() {
+    const eventView = new EventView({
+      start: '2019-10-01T00:00:00',
+      end: '2019-10-02T00:00:00',
+    });
+
+    expect(eventView.getDays()).toBe(1);
+
+    const eventView2 = new EventView({
+      start: '2019-10-01T00:00:00',
+      end: '2019-10-15T00:00:00',
+    });
+    expect(eventView2.getDays()).toBe(14);
+  });
+});
+
 describe('EventView.clone()', function() {
   it('returns a unique instance', function() {
     const state = {
@@ -2242,8 +2277,8 @@ describe('EventView.getYAxisOptions()', function() {
       fields: generateFields([
         'ignored-field',
         'count_unique(issue)',
-        'last_seen',
-        'latest_event',
+        'last_seen()',
+        'latest_event()',
       ]),
     });
 
@@ -2331,6 +2366,46 @@ describe('EventView.getDisplayOptions()', function() {
     const options = eventView.getDisplayOptions();
     expect(options[1].value).toEqual('previous');
     expect(options[1].disabled).toBeTruthy();
+  });
+});
+
+describe('EventView.getDisplayMode()', function() {
+  const state = {
+    fields: [],
+    sorts: [],
+    query: '',
+    project: [],
+    statsPeriod: '42d',
+    environment: [],
+  };
+
+  it('should have default', function() {
+    const eventView = new EventView({
+      ...state,
+    });
+    const displayMode = eventView.getDisplayMode();
+    expect(displayMode).toEqual(DisplayModes.DEFAULT);
+  });
+
+  it('should return current mode when not disabled', function() {
+    const eventView = new EventView({
+      ...state,
+      display: DisplayModes.TOP5,
+    });
+    const displayMode = eventView.getDisplayMode();
+    expect(displayMode).toEqual(DisplayModes.TOP5);
+  });
+
+  it('should return default mode when disabled', function() {
+    const eventView = new EventView({
+      ...state,
+      // the existence of start and end will disable the PREVIOUS mode
+      end: '2020-04-13T12:13:14',
+      start: '2020-04-01T12:13:14',
+      display: DisplayModes.PREVIOUS,
+    });
+    const displayMode = eventView.getDisplayMode();
+    expect(displayMode).toEqual(DisplayModes.DEFAULT);
   });
 });
 

@@ -97,6 +97,9 @@ def create_incident(
                     sender=type(incident_project), instance=incident_project, created=True
                 )
 
+        create_incident_activity(
+            incident, IncidentActivityType.STARTED, user=user, date_added=date_started
+        )
         create_incident_activity(incident, IncidentActivityType.DETECTED, user=user)
         analytics.record(
             "incident.created",
@@ -109,7 +112,12 @@ def create_incident(
 
 
 def update_incident_status(
-    incident, status, user=None, comment=None, status_method=IncidentStatusMethod.RULE_TRIGGERED
+    incident,
+    status,
+    user=None,
+    comment=None,
+    status_method=IncidentStatusMethod.RULE_TRIGGERED,
+    date_closed=None,
 ):
     """
     Updates the status of an Incident and write an IncidentActivity row to log
@@ -135,7 +143,7 @@ def update_incident_status(
 
         kwargs = {"status": status.value, "status_method": status_method.value}
         if status == IncidentStatus.CLOSED:
-            kwargs["date_closed"] = timezone.now()
+            kwargs["date_closed"] = date_closed if date_closed else timezone.now()
         elif status == IncidentStatus.OPEN:
             # If we're moving back out of closed status then unset the closed
             # date
@@ -195,11 +203,15 @@ def create_incident_activity(
     previous_value=None,
     comment=None,
     mentioned_user_ids=None,
+    date_added=None,
 ):
     if activity_type == IncidentActivityType.COMMENT and user:
         subscribe_to_incident(incident, user)
     value = six.text_type(value) if value is not None else value
     previous_value = six.text_type(previous_value) if previous_value is not None else previous_value
+    kwargs = {}
+    if date_added:
+        kwargs["date_added"] = date_added
     activity = IncidentActivity.objects.create(
         incident=incident,
         type=activity_type.value,
@@ -207,6 +219,7 @@ def create_incident_activity(
         value=value,
         previous_value=previous_value,
         comment=comment,
+        **kwargs
     )
 
     if mentioned_user_ids:
@@ -517,7 +530,9 @@ def create_alert_rule(
     query,
     aggregate,
     time_window,
+    threshold_type,
     threshold_period,
+    resolve_threshold=None,
     environment=None,
     include_all_projects=False,
     excluded_projects=None,
@@ -535,8 +550,11 @@ def create_alert_rule(
     :param aggregate: A string representing the aggregate used in this alert rule
     :param time_window: Time period to aggregate over, in minutes
     :param environment: An optional environment that this rule applies to
+    :param threshold_type: An AlertRuleThresholdType
     :param threshold_period: How many update periods the value of the
     subscription needs to exceed the threshold before triggering
+    :param resolve_threshold: Optional value that the subscription needs to reach to
+    resolve the alert
     :param include_all_projects: Whether to include all current and future projects
     from this organization
     :param excluded_projects: List of projects to exclude if we're using
@@ -562,6 +580,8 @@ def create_alert_rule(
             organization=organization,
             snuba_query=snuba_query,
             name=name,
+            threshold_type=threshold_type.value,
+            resolve_threshold=resolve_threshold,
             threshold_period=threshold_period,
             include_all_projects=include_all_projects,
         )
@@ -624,7 +644,9 @@ def update_alert_rule(
     aggregate=None,
     time_window=None,
     environment=None,
+    threshold_type=None,
     threshold_period=None,
+    resolve_threshold=None,
     include_all_projects=None,
     excluded_projects=None,
 ):
@@ -640,8 +662,11 @@ def update_alert_rule(
     :param aggregate: A string representing the aggregate used in this alert rule
     :param time_window: Time period to aggregate over, in minutes.
     :param environment: An optional environment that this rule applies to
+    :param threshold_type: An AlertRuleThresholdType
     :param threshold_period: How many update periods the value of the
     subscription needs to exceed the threshold before triggering
+    :param resolve_threshold: Optional value that the subscription needs to reach to
+    resolve the alert
     :param include_all_projects: Whether to include all current and future projects
     from this organization
     :param excluded_projects: List of projects to exclude if we're using
@@ -666,6 +691,10 @@ def update_alert_rule(
         updated_query_fields["aggregate"] = aggregate
     if time_window:
         updated_query_fields["time_window"] = timedelta(minutes=time_window)
+    if threshold_type:
+        updated_fields["threshold_type"] = threshold_type.value
+    if resolve_threshold:
+        updated_fields["resolve_threshold"] = resolve_threshold
     if threshold_period:
         updated_fields["threshold_period"] = threshold_period
     if include_all_projects is not None:

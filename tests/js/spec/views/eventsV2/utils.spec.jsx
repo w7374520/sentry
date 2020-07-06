@@ -5,7 +5,6 @@ import {
   decodeColumnOrder,
   pushEventViewToLocation,
   getExpandedResults,
-  getDiscoverLandingUrl,
   downloadAsCsv,
 } from 'app/views/eventsV2/utils';
 import {COL_WIDTH_UNDEFINED} from 'app/components/gridEditable';
@@ -196,8 +195,8 @@ describe('getExpandedResults()', function() {
     let view = new EventView(state);
 
     let result = getExpandedResults(view, {}, {});
+    // id should be omitted as it is an implicit property on unaggregated results.
     expect(result.fields).toEqual([
-      {field: 'id', width: -1}, // expect count() to be converted to id
       {field: 'timestamp', width: -1},
       {field: 'title'},
       {field: 'custom_tag'},
@@ -217,8 +216,8 @@ describe('getExpandedResults()', function() {
     });
 
     result = getExpandedResults(view, {}, {});
+    // id should be omitted as it is an implicit property on unaggregated results.
     expect(result.fields).toEqual([
-      {field: 'id', width: -1}, // expect count() to be converted to id
       {field: 'timestamp', width: -1},
       {field: 'title'},
       {field: 'custom_tag'},
@@ -242,15 +241,15 @@ describe('getExpandedResults()', function() {
         {field: 'custom_tag'},
         {field: 'title'}, // not expected to be dropped
         {field: 'unique_count(id)'},
-        {field: 'apdex()'}, // should be dropped
-        {field: 'impact()'}, // should be dropped
+        {field: 'apdex(300)'}, // should be dropped
+        {field: 'impact(300)'}, // should be dropped
+        {field: 'user_misery(300)'}, // should be dropped
       ],
     });
 
     result = getExpandedResults(view, {}, {});
     expect(result.fields).toEqual([
       {field: 'timestamp', width: -1},
-      {field: 'id', width: -1},
       {field: 'title'},
       {field: 'transaction.duration', width: -1},
       {field: 'custom_tag'},
@@ -438,18 +437,6 @@ describe('getExpandedResults()', function() {
   });
 });
 
-describe('getDiscoverLandingUrl', function() {
-  it('is correct for with discover-query and discover-basic features', function() {
-    const org = TestStubs.Organization({features: ['discover-query', 'discover-basic']});
-    expect(getDiscoverLandingUrl(org)).toBe('/organizations/org-slug/discover/queries/');
-  });
-
-  it('is correct for with only discover-basic feature', function() {
-    const org = TestStubs.Organization({features: ['discover-basic']});
-    expect(getDiscoverLandingUrl(org)).toBe('/organizations/org-slug/discover/results/');
-  });
-});
-
 describe('downloadAsCsv', function() {
   const messageColumn = {name: 'message'};
   const environmentColumn = {name: 'environment'};
@@ -483,6 +470,7 @@ describe('downloadAsCsv', function() {
   it('handles the user column', function() {
     const result = {
       data: [
+        {message: 'test 0', user: 'baz'},
         {message: 'test 1', 'user.name': 'foo'},
         {message: 'test 2', 'user.name': 'bar', 'user.ip': '127.0.0.1'},
         {message: 'test 3', 'user.email': 'foo@example.com', 'user.username': 'foo'},
@@ -491,7 +479,7 @@ describe('downloadAsCsv', function() {
     };
     expect(downloadAsCsv(result, [messageColumn, userColumn])).toContain(
       encodeURIComponent(
-        'message,user\r\ntest 1,foo\r\ntest 2,bar\r\ntest 3,foo@example.com\r\ntest 4,127.0.0.1'
+        'message,user\r\ntest 0,baz\r\ntest 1,foo\r\ntest 2,bar\r\ntest 3,foo@example.com\r\ntest 4,127.0.0.1'
       )
     );
   });

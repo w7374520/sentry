@@ -8,7 +8,9 @@ import {
   NOT_INSTALLED,
   PENDING,
 } from 'app/views/organizationIntegrations/constants';
+import {WIDGET_DISPLAY} from 'app/views/dashboards/constants';
 import {Props as AlertProps} from 'app/components/alert';
+import {Query as DiscoverQuery} from 'app/views/discover/types';
 
 declare global {
   interface Window {
@@ -88,6 +90,14 @@ export type OrganizationSummary = {
   slug: string;
 };
 
+export type Relay = {
+  publicKey: string;
+  name: string;
+  created?: string;
+  lastModified?: string;
+  description?: string;
+};
+
 /**
  * Detailed organization (e.g. when requesting details for a single org)
  *
@@ -120,9 +130,9 @@ export type LightWeightOrganization = OrganizationSummary & {
   allowSharedIssues: boolean;
   dataScrubberDefaults: boolean;
   dataScrubber: boolean;
-  role?: string;
   onboardingTasks: OnboardingTaskStatus[];
-  trustedRelays: string[];
+  trustedRelays: Relay[];
+  role?: string;
 };
 
 /**
@@ -154,6 +164,7 @@ export type Project = {
   // XXX: These are part of the DetailedProject serializer
   plugins: Plugin[];
   processingIssues: number;
+  relayPiiConfig: string;
   builtinSymbolSources?: string[];
 } & AvatarProject;
 
@@ -234,18 +245,9 @@ type RuntimeContext = {
   name?: string;
 };
 
-type TraceContext = {
-  type: 'trace';
-  op: string;
-  description: string;
-  parent_span_id: string;
-  span_id: string;
-  trace_id: string;
-};
-
 type EventContexts = {
   runtime?: RuntimeContext;
-  trace?: TraceContext;
+  trace?: TraceContextType;
 };
 
 type SentryEventBase = {
@@ -257,11 +259,13 @@ type SentryEventBase = {
   metadata: EventMetadata;
   contexts: EventContexts;
   context?: {[key: string]: any};
+  device?: {[key: string]: any};
   packages?: {[key: string]: string};
   user: EventUser;
   message: string;
   platform?: PlatformKey;
   dateCreated?: string;
+  dateReceived?: string;
   endTimestamp?: number;
   entries: EntryType[];
 
@@ -681,6 +685,9 @@ type IntegrationAspects = {
     buttonText: string;
     noticeText: string;
   };
+  configure_integration?: {
+    title: string;
+  };
 };
 
 type BaseIntegrationProvider = {
@@ -907,6 +914,7 @@ type ReleaseData = {
   owner?: any; // TODO(ts)
   newGroups: number;
   versionInfo: VersionInfo;
+  fileCount: number | null;
 };
 
 type BaseRelease = {
@@ -1033,6 +1041,7 @@ export type SavedQueryState = {
 export type SelectValue<T> = {
   label: string;
   value: T;
+  disabled?: boolean;
 };
 
 /**
@@ -1134,6 +1143,8 @@ export type Tag = {
   totalValues?: number;
   predefined?: boolean;
 };
+
+export type TagCollection = {[key: string]: Tag};
 
 export type TagValue = {
   count: number;
@@ -1278,6 +1289,36 @@ export type EventGroupVariant = {
   values?: string;
   component?: EventGroupComponent;
   config?: EventGroupingConfig;
+};
+
+export type SourceMapsArchive = {
+  id: number;
+  type: 'release';
+  name: string;
+  date: string;
+  fileCount: number;
+};
+
+export type Artifact = {
+  dateCreated: string;
+  dist: string | null;
+  id: string;
+  name: string;
+  sha1: string;
+  size: number;
+  headers: {'Content-Type': string};
+};
+
+export type Widget = {
+  queries: {
+    discover: DiscoverQuery[];
+  };
+  title: React.ReactNode;
+  type: WIDGET_DISPLAY;
+  fieldLabelMap?: object;
+  yAxisMapping?: [number[], number[]];
+  includeReleases?: boolean;
+  includePreviousPeriod?: boolean;
 };
 
 export type EventGroupInfo = Record<EventGroupVariantKey, EventGroupVariant>;

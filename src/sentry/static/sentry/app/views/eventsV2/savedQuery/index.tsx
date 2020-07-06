@@ -5,7 +5,7 @@ import {Location} from 'history';
 
 import {Client} from 'app/api';
 import {t} from 'app/locale';
-import {Organization, SavedQuery} from 'app/types';
+import {Organization, SavedQuery, Project} from 'app/types';
 import withApi from 'app/utils/withApi';
 import Button from 'app/components/button';
 import DropdownButton from 'app/components/dropdownButton';
@@ -13,9 +13,13 @@ import DropdownControl from 'app/components/dropdownControl';
 import Input from 'app/components/forms/input';
 import space from 'app/styles/space';
 import {IconBookmark, IconDelete} from 'app/icons';
+import Feature from 'app/components/acl/feature';
 import EventView from 'app/utils/discover/eventView';
+import withProjects from 'app/utils/withProjects';
+import {getDiscoverLandingUrl} from 'app/utils/discover/urls';
+import CreateAlertButton from 'app/components/createAlertButton';
+import {trackAnalyticsEvent} from 'app/utils/analytics';
 
-import {getDiscoverLandingUrl} from '../utils';
 import {handleCreateQuery, handleUpdateQuery, handleDeleteQuery} from './utils';
 
 type DefaultProps = {
@@ -37,6 +41,11 @@ type Props = DefaultProps & {
   eventView: EventView;
   savedQuery: SavedQuery | undefined;
   savedQueryLoading: boolean;
+  projects: Project[];
+  updateCallback: () => void;
+  onIncompatibleAlertQuery: React.ComponentProps<
+    typeof CreateAlertButton
+  >['onIncompatibleQuery'];
 };
 
 type State = {
@@ -158,12 +167,13 @@ class SavedQueryButtonGroup extends React.PureComponent<Props, State> {
     event.preventDefault();
     event.stopPropagation();
 
-    const {api, organization, eventView} = this.props;
+    const {api, organization, eventView, updateCallback} = this.props;
 
     handleUpdateQuery(api, organization, eventView).then((savedQuery: SavedQuery) => {
       const view = EventView.fromSavedQuery(savedQuery);
       this.setState({queryName: ''});
       browserHistory.push(view.getResultsViewUrlTarget(organization.slug));
+      updateCallback();
     });
   };
 
@@ -178,6 +188,15 @@ class SavedQueryButtonGroup extends React.PureComponent<Props, State> {
         pathname: getDiscoverLandingUrl(organization),
         query: {},
       });
+    });
+  };
+
+  handleCreateAlertSuccess = () => {
+    const {organization} = this.props;
+    trackAnalyticsEvent({
+      eventKey: 'discover_v2.create_alert',
+      eventName: 'Discoverv2: Create alert from discover',
+      organization_id: parseInt(organization.id, 10),
     });
   };
 
@@ -244,7 +263,7 @@ class SavedQueryButtonGroup extends React.PureComponent<Props, State> {
 
     return (
       <ButtonSaved disabled={this.props.disabled}>
-        <StyledIconBookmark isSolid size="xs" color="yellow" />
+        <StyledIconBookmark isSolid size="xs" color="yellow400" />
         {t('Saved query')}
       </ButtonSaved>
     );
@@ -264,7 +283,7 @@ class SavedQueryButtonGroup extends React.PureComponent<Props, State> {
         disabled={this.props.disabled}
       >
         <IconUpdate />
-        {t('Update query')}
+        {t('Save')}
       </Button>
     );
   }
@@ -286,9 +305,27 @@ class SavedQueryButtonGroup extends React.PureComponent<Props, State> {
     );
   }
 
+  renderButtonCreateAlert() {
+    const {eventView, organization, projects, onIncompatibleAlertQuery} = this.props;
+
+    return (
+      <Feature features={['create-from-discover']} organization={organization}>
+        <CreateAlertButton
+          eventView={eventView}
+          organization={organization}
+          projects={projects}
+          onIncompatibleQuery={onIncompatibleAlertQuery}
+          onSuccess={this.handleCreateAlertSuccess}
+          data-test-id="discover2-create-from-discover"
+        />
+      </Feature>
+    );
+  }
+
   render() {
     return (
       <ButtonGroup>
+        {this.renderButtonCreateAlert()}
         {this.renderButtonDelete()}
         {this.renderButtonSaveAs()}
         {this.renderButtonUpdate()}
@@ -338,7 +375,7 @@ const IconUpdate = styled('div')`
 
   margin-right: ${space(0.75)};
   border-radius: 5px;
-  background-color: ${p => p.theme.yellow};
+  background-color: ${p => p.theme.yellow400};
 `;
 
-export default withApi(SavedQueryButtonGroup);
+export default withProjects(withApi(SavedQueryButtonGroup));
