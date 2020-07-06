@@ -19,8 +19,7 @@ from sentry.api.event_search import (
     parse_search_query,
     get_json_meta_type,
     InvalidSearchQuery,
-    ParenExpression,
-    SearchBoolean,
+    OPERATOR_TO_FUNCTION,
     SearchFilter,
     SearchKey,
     SearchValue,
@@ -766,546 +765,202 @@ class ParseSearchQueryTest(unittest.TestCase):
         assert parse_search_query("") == []
 
 
-class ParseBooleanSearchQueryTest(unittest.TestCase):
+class ParseBooleanSearchQueryTest(TestCase):
     def setUp(self):
         super(ParseBooleanSearchQueryTest, self).setUp()
-        self.term1 = SearchFilter(
-            key=SearchKey(name="user.email"),
-            operator="=",
-            value=SearchValue(raw_value="foo@example.com"),
-        )
-        self.term2 = SearchFilter(
-            key=SearchKey(name="user.email"),
-            operator="=",
-            value=SearchValue(raw_value="bar@example.com"),
-        )
-        self.term3 = SearchFilter(
-            key=SearchKey(name="user.email"),
-            operator="=",
-            value=SearchValue(raw_value="foobar@example.com"),
-        )
-        self.term4 = SearchFilter(
-            key=SearchKey(name="user.email"),
-            operator="=",
-            value=SearchValue(raw_value="hello@example.com"),
-        )
-        self.term5 = SearchFilter(
-            key=SearchKey(name="user.email"),
-            operator="=",
-            value=SearchValue(raw_value="hi@example.com"),
-        )
+        self.term1 = ["equals", ["user.email", "foo@example.com"]]
+        self.term2 = ["equals", ["user.email", "bar@example.com"]]
+        self.term3 = ["equals", ["user.email", "foobar@example.com"]]
+        self.term4 = ["equals", ["user.email", "hello@example.com"]]
+        self.term5 = ["equals", ["user.email", "hi@example.com"]]
 
     def test_simple(self):
-        assert get_filter("user.email:foo@example.com OR user.email:bar@example.com") == [
-            SearchBoolean(left_term=self.term1, operator="OR", right_term=self.term2)
-        ]
+        result = get_filter("user.email:foo@example.com OR user.email:bar@example.com")
+        print("RES", result.conditions)
+        assert result.conditions == [[["or", [self.term1, self.term2]], "=", 1]]
 
-        assert parse_search_query("user.email:foo@example.com AND user.email:bar@example.com") == [
-            SearchBoolean(left_term=self.term1, operator="AND", right_term=self.term2)
-        ]
+        result = get_filter("user.email:foo@example.com AND user.email:bar@example.com")
+        assert result.conditions == [[["and", [self.term1, self.term2]], "=", 1]]
 
     def test_single_term(self):
-        assert parse_search_query("user.email:foo@example.com") == [self.term1]
+        result = get_filter("user.email:foo@example.com")
+        assert result.conditions == [["user.email", "=", "foo@example.com"]]
 
     def test_order_of_operations(self):
-        assert parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com OR user.email:bar@example.com AND user.email:foobar@example.com"
-        ) == [
-            SearchBoolean(
-                left_term=self.term1,
-                operator="OR",
-                right_term=SearchBoolean(
-                    left_term=self.term2, operator="AND", right_term=self.term3
-                ),
-            )
+        )
+        print("RESULT", result.conditions)
+        assert result.conditions == [
+            [["or", [self.term1, ["and", [self.term2, self.term3]]]], "=", 1]
         ]
-        assert parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com"
-        ) == [
-            SearchBoolean(
-                left_term=SearchBoolean(
-                    left_term=self.term1, operator="AND", right_term=self.term2
-                ),
-                operator="OR",
-                right_term=self.term3,
-            )
+        )
+        assert result.conditions == [
+            [["or", [["and", [self.term1, self.term2]], self.term3]], "=", 1]
         ]
-
-    def test_combining_normal_terms_with_boolean(self):
-        def format_query(parsed_query):
-            message = []
-            for term in parsed_query:
-                if isinstance(term, ParenExpression):
-                    message.append("({})".format(format_query(term.children)))
-                elif isinstance(term, SearchFilter):
-                    message.append(
-                        "{}{}'{}'".format(term.key.name, term.operator, term.value.value)
-                    )
-                else:
-                    message.append("{}".format(term))
-
-            return " ".join(message)
-
-        tests = [
-            (
-                "foo bar baz OR fizz buzz bizz",
-                [
-                    SearchFilter(
-                        key=SearchKey(name="message"),
-                        operator="=",
-                        value=SearchValue(raw_value="foo bar baz"),
-                    ),
-                    "OR",
-                    SearchFilter(
-                        key=SearchKey(name="message"),
-                        operator="=",
-                        value=SearchValue(raw_value="fizz buzz bizz"),
-                    ),
-                ],
-            ),
-            (
-                "a:b (c:d OR e:f) g:h i:j OR k:l",
-                [
-                    SearchFilter(
-                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
-                    ),
-                    ParenExpression(
-                        children=[
-                            SearchFilter(
-                                key=SearchKey(name="c"),
-                                operator="=",
-                                value=SearchValue(raw_value="d"),
-                            ),
-                            "OR",
-                            SearchFilter(
-                                key=SearchKey(name="e"),
-                                operator="=",
-                                value=SearchValue(raw_value="f"),
-                            ),
-                        ]
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
-                    ),
-                    "OR",
-                    SearchFilter(
-                        key=SearchKey(name="k"), operator="=", value=SearchValue(raw_value="l")
-                    ),
-                ],
-            ),
-            (
-                "a:b OR c:d e:f g:h (i:j OR k:l)",
-                [
-                    SearchFilter(
-                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
-                    ),
-                    "OR",
-                    SearchFilter(
-                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
-                    ),
-                    ParenExpression(
-                        children=[
-                            SearchFilter(
-                                key=SearchKey(name="i"),
-                                operator="=",
-                                value=SearchValue(raw_value="j"),
-                            ),
-                            "OR",
-                            SearchFilter(
-                                key=SearchKey(name="k"),
-                                operator="=",
-                                value=SearchValue(raw_value="l"),
-                            ),
-                        ]
-                    ),
-                ],
-            ),
-            (
-                "(a:b OR c:d) e:f",
-                [
-                    ParenExpression(
-                        children=[
-                            SearchFilter(
-                                key=SearchKey(name="a"),
-                                operator="=",
-                                value=SearchValue(raw_value="b"),
-                            ),
-                            "OR",
-                            SearchFilter(
-                                key=SearchKey(name="c"),
-                                operator="=",
-                                value=SearchValue(raw_value="d"),
-                            ),
-                        ]
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
-                    ),
-                ],
-            ),
-            (
-                "a:b OR c:d e:f g:h i:j OR k:l",
-                [
-                    SearchFilter(
-                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
-                    ),
-                    "OR",
-                    SearchFilter(
-                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
-                    ),
-                    "OR",
-                    SearchFilter(
-                        key=SearchKey(name="k"), operator="=", value=SearchValue(raw_value="l")
-                    ),
-                ],
-            ),
-            (
-                "(a:b OR c:d) e:f g:h OR i:j k:l",
-                [
-                    ParenExpression(
-                        children=[
-                            SearchFilter(
-                                key=SearchKey(name="a"),
-                                operator="=",
-                                value=SearchValue(raw_value="b"),
-                            ),
-                            "OR",
-                            SearchFilter(
-                                key=SearchKey(name="c"),
-                                operator="=",
-                                value=SearchValue(raw_value="d"),
-                            ),
-                        ]
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
-                    ),
-                    "OR",
-                    SearchFilter(
-                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="k"), operator="=", value=SearchValue(raw_value="l")
-                    ),
-                ],
-            ),
-            (
-                "a:b c:d e:f OR g:h i:j",
-                [
-                    SearchFilter(
-                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="e"), operator="=", value=SearchValue(raw_value="f")
-                    ),
-                    "OR",
-                    SearchFilter(
-                        key=SearchKey(name="g"), operator="=", value=SearchValue(raw_value="h")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
-                    ),
-                ],
-            ),
-            (
-                "a:b c:d (e:f OR g:h) i:j",
-                [
-                    SearchFilter(
-                        key=SearchKey(name="a"), operator="=", value=SearchValue(raw_value="b")
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="c"), operator="=", value=SearchValue(raw_value="d")
-                    ),
-                    ParenExpression(
-                        children=[
-                            SearchFilter(
-                                key=SearchKey(name="e"),
-                                operator="=",
-                                value=SearchValue(raw_value="f"),
-                            ),
-                            "OR",
-                            SearchFilter(
-                                key=SearchKey(name="g"),
-                                operator="=",
-                                value=SearchValue(raw_value="h"),
-                            ),
-                        ]
-                    ),
-                    SearchFilter(
-                        key=SearchKey(name="i"), operator="=", value=SearchValue(raw_value="j")
-                    ),
-                ],
-            ),
-        ]
-
-        for test in tests:
-            assert test[1] == parse_search_query(test[0])
-
-    def test_evans_experiments(self):
-        def print_sb(term):
-            if isinstance(term, SearchFilter):
-                return "{}{}'{}'".format(term.key.name, term.operator, term.value.raw_value)
-
-            return "({} {} {})".format(
-                print_sb(term.left_term), term.operator, print_sb(term.right_term)
-            )
-
-        def print_res(res):
-            return " AND ".join(print_sb(term) for term in res)
-
-        result = parse_search_query("some stuff title:bar title:baz")
-        formatted = print_res(result)
-        print("RES", formatted, result)
-        # assert formatted == "and(equals(title, 'bar'), equals(title, 'baz')"
-
-        # TEST CASES
-        # search_term search_term paren_term search_term
-        # search_term search_term boolean_term search_term
-        # paren_term search_term boolean_term search_term
-        # boolean_term search_term search_term boolean_term
-        # search_term paren_term search_term boolean_term
-        # "some raw message OR some other raw message"
-
-        # result = parse_search_query(
-        #     "user.email:foo@example.com OR user.email:bar@example.com OR user.email:foobar@example.com AND user.email:hello@example.com"
-        # )
-        # print("1", print_sb(result[0]))
-        # T [l, OR, l, OR, l, AND l], 0, 7
-        # BOR IDX 1, L ([l]), R ([l, OR, l, AND, l])
-        #     L: T [l], 0, 1
-        #         -> l
-        #     R: T [l, OR, l, AND, l], 2, 7
-        #         BOR
-
-        # result = parse_search_query(
-        #     "user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com"
-        # )
-        # print("2", print_sb(result[0]))
-
-        # result = parse_search_query(
-        #     "user.email:foo@example.com OR user.email:bar@example.com AND user.email:foobar@example.com OR user.email:hello@example.com"
-        # )
-        # print("3", print_sb(result[0]))
-
-        # result = parse_search_query("title:bar foo evan hicks OR title:baz")
-        # print("3", print_res(result))
-        # print("3", result)
-
-        # result = parse_search_query(
-        #     "user.email:foo@example.com user.email:bar@example.com OR user.email:foobar@example.com"
-        # )
-        # print("4", print_res(result))
-
-        # result = parse_search_query(
-        #     "user.email:foo@example.com user.email:bar@example.com AND user.email:foobar@example.com"
-        # )
-        # print("5", print_res(result))
-
-        # assert result == [
-        #     SearchBoolean(
-        #         left_term=SearchBoolean(
-        #             left_term=self.term1,
-        #             operator="OR",
-        #             right_term=SearchBoolean(
-        #                 left_term=self.term2, operator="OR", right_term=self.term3,
-        #             ),
-        #         ),
-        #         operator="AND",
-        #         right_term=self.term4,
-        #     )
-        # ]
-
-        assert False
 
     def test_multiple_statements(self):
-        assert parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com OR user.email:bar@example.com OR user.email:foobar@example.com"
-        ) == [
-            SearchBoolean(
-                left_term=self.term1,
-                operator="OR",
-                right_term=SearchBoolean(
-                    left_term=self.term2, operator="OR", right_term=self.term3
-                ),
-            )
+        )
+        assert result.conditions == [
+            [["or", [self.term1, ["or", [self.term2, self.term3]]]], "=", 1]
         ]
 
-        assert parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com AND user.email:bar@example.com AND user.email:foobar@example.com"
-        ) == [
-            SearchBoolean(
-                left_term=self.term1,
-                operator="AND",
-                right_term=SearchBoolean(
-                    left_term=self.term2, operator="AND", right_term=self.term3
-                ),
-            )
+        )
+        assert result.conditions == [
+            [["and", [self.term1, ["and", [self.term2, self.term3]]]], "=", 1]
         ]
 
         # longer even number of terms
-        assert parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com AND user.email:hello@example.com"
-        ) == [
-            SearchBoolean(
-                left_term=SearchBoolean(
-                    left_term=self.term1, operator="AND", right_term=self.term2
-                ),
-                operator="OR",
-                right_term=SearchBoolean(
-                    left_term=self.term3, operator="AND", right_term=self.term4
-                ),
-            )
+        )
+        assert result.conditions == [
+            [["or", [["and", [self.term1, self.term2]], ["and", [self.term3, self.term4]]]], "=", 1]
         ]
 
         # longer odd number of terms
-        assert parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com AND user.email:hello@example.com AND user.email:hi@example.com"
-        ) == [
-            SearchBoolean(
-                left_term=SearchBoolean(
-                    left_term=self.term1, operator="AND", right_term=self.term2
-                ),
-                operator="OR",
-                right_term=SearchBoolean(
-                    left_term=self.term3,
-                    operator="AND",
-                    right_term=SearchBoolean(
-                        left_term=self.term4, operator="AND", right_term=self.term5
-                    ),
-                ),
-            )
+        )
+        assert result.conditions == [
+            [
+                [
+                    "or",
+                    [
+                        ["and", [self.term1, self.term2]],
+                        ["and", [self.term3, ["and", [self.term4, self.term5]]]],
+                    ],
+                ],
+                "=",
+                1,
+            ]
         ]
 
         # absurdly long
-        assert parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com AND user.email:hello@example.com AND user.email:hi@example.com OR user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com AND user.email:hello@example.com AND user.email:hi@example.com"
-        ) == [
-            SearchBoolean(
-                left_term=SearchBoolean(
-                    left_term=self.term1, operator="AND", right_term=self.term2
-                ),
-                operator="OR",
-                right_term=SearchBoolean(
-                    left_term=SearchBoolean(
-                        left_term=self.term3,
-                        operator="AND",
-                        right_term=SearchBoolean(
-                            left_term=self.term4, operator="AND", right_term=self.term5
-                        ),
-                    ),
-                    operator="OR",
-                    right_term=SearchBoolean(
-                        left_term=SearchBoolean(
-                            left_term=self.term1, operator="AND", right_term=self.term2
-                        ),
-                        operator="OR",
-                        right_term=SearchBoolean(
-                            left_term=self.term3,
-                            operator="AND",
-                            right_term=SearchBoolean(
-                                left_term=self.term4, operator="AND", right_term=self.term5
-                            ),
-                        ),
-                    ),
-                ),
-            )
+        )
+        assert result.conditions == [
+            [
+                [
+                    "or",
+                    [
+                        ["and", [self.term1, self.term2]],
+                        [
+                            "or",
+                            [
+                                ["and", [self.term3, ["and", [self.term4, self.term5]]]],
+                                [
+                                    "or",
+                                    [
+                                        ["and", [self.term1, self.term2]],
+                                        ["and", [self.term3, ["and", [self.term4, self.term5]]]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                "=",
+                1,
+            ]
         ]
 
     def test_grouping_simple(self):
-        result = parse_search_query("(user.email:foo@example.com OR user.email:bar@example.com)")
-        assert result == [SearchBoolean(left_term=self.term1, operator="OR", right_term=self.term2)]
-        result = parse_search_query(
+        result = get_filter("(user.email:foo@example.com OR user.email:bar@example.com)")
+        assert result.conditions == [[["or", [self.term1, self.term2]], "=", 1]]
+
+        result = get_filter(
             "(user.email:foo@example.com OR user.email:bar@example.com) AND user.email:foobar@example.com"
         )
-
-        assert result == [
-            SearchBoolean(
-                left_term=SearchBoolean(left_term=self.term1, operator="OR", right_term=self.term2),
-                operator="AND",
-                right_term=self.term3,
-            )
+        assert result.conditions == [
+            [["and", [["or", [self.term1, self.term2]], self.term3]], "=", 1]
         ]
 
-        result = parse_search_query(
+        result = get_filter(
             "user.email:foo@example.com AND (user.email:bar@example.com OR user.email:foobar@example.com)"
         )
-        assert result == [
-            SearchBoolean(
-                left_term=self.term1,
-                operator="AND",
-                right_term=SearchBoolean(
-                    left_term=self.term2, operator="OR", right_term=self.term3
-                ),
-            )
+        assert result.conditions == [
+            [["and", [self.term1, ["or", [self.term2, self.term3]]]], "=", 1]
         ]
 
     def test_nested_grouping(self):
-        result = parse_search_query(
+        result = get_filter(
             "(user.email:foo@example.com OR (user.email:bar@example.com OR user.email:foobar@example.com))"
         )
-        assert result == [
-            SearchBoolean(
-                left_term=self.term1,
-                operator="OR",
-                right_term=SearchBoolean(
-                    left_term=self.term2, operator="OR", right_term=self.term3
-                ),
-            )
+        assert result.conditions == [
+            [["or", [self.term1, ["or", [self.term2, self.term3]]]], "=", 1]
         ]
-        result = parse_search_query(
+
+        result = get_filter(
             "(user.email:foo@example.com OR (user.email:bar@example.com OR (user.email:foobar@example.com AND user.email:hello@example.com OR user.email:hi@example.com)))"
         )
-        assert result == [
-            SearchBoolean(
-                left_term=self.term1,
-                operator="OR",
-                right_term=SearchBoolean(
-                    left_term=self.term2,
-                    operator="OR",
-                    right_term=SearchBoolean(
-                        left_term=SearchBoolean(
-                            left_term=self.term3, operator="AND", right_term=self.term4
-                        ),
-                        operator="OR",
-                        right_term=self.term5,
-                    ),
-                ),
-            )
+        assert result.conditions == [
+            [
+                [
+                    "or",
+                    [
+                        self.term1,
+                        [
+                            "or",
+                            [self.term2, ["or", [["and", [self.term3, self.term4]], self.term5]]],
+                        ],
+                    ],
+                ],
+                "=",
+                1,
+            ]
+        ]
+
+    def test_grouping_without_boolean_terms(self):
+        result = get_filter("undefined is not an object (evaluating 'function.name')")
+        assert result.conditions == [
+            [
+                [
+                    "and",
+                    [
+                        [
+                            "notEquals",
+                            [
+                                [
+                                    "positionCaseInsensitive",
+                                    ["message", u"'undefined is not an object'"],
+                                ],
+                                0,
+                            ],
+                        ],
+                        [
+                            "notEquals",
+                            [
+                                [
+                                    "positionCaseInsensitive",
+                                    ["message", u"'evaluating 'function.name''"],
+                                ],
+                                0,
+                            ],
+                        ],
+                    ],
+                ],
+                "=",
+                1,
+            ]
         ]
 
     def test_malformed_groups(self):
         with pytest.raises(InvalidSearchQuery) as error:
-            parse_search_query("(user.email:foo@example.com OR user.email:bar@example.com")
+            get_filter("(user.email:foo@example.com OR user.email:bar@example.com")
         assert (
             six.text_type(error.value)
             == "Parse error at '(user.' (column 1). This is commonly caused by unmatched parentheses. Enclose any text in double quotes."
         )
         with pytest.raises(InvalidSearchQuery) as error:
-            parse_search_query(
+            get_filter(
                 "((user.email:foo@example.com OR user.email:bar@example.com AND  user.email:bar@example.com)"
             )
         assert (
@@ -1313,13 +968,13 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
             == "Parse error at '((user' (column 1). This is commonly caused by unmatched parentheses. Enclose any text in double quotes."
         )
         with pytest.raises(InvalidSearchQuery) as error:
-            parse_search_query("user.email:foo@example.com OR user.email:bar@example.com)")
+            get_filter("user.email:foo@example.com OR user.email:bar@example.com)")
         assert (
             six.text_type(error.value)
             == "Parse error at '.com)' (column 57). This is commonly caused by unmatched parentheses. Enclose any text in double quotes."
         )
         with pytest.raises(InvalidSearchQuery) as error:
-            parse_search_query(
+            get_filter(
                 "(user.email:foo@example.com OR user.email:bar@example.com AND  user.email:bar@example.com))"
             )
         assert (
@@ -1327,21 +982,584 @@ class ParseBooleanSearchQueryTest(unittest.TestCase):
             == "Parse error at 'com))' (column 91). This is commonly caused by unmatched parentheses. Enclose any text in double quotes."
         )
 
-    def test_grouping_without_boolean_terms(self):
+    def test_combining_normal_terms_with_boolean(self):
+        def _eq(xy):
+            return ["equals", [["ifNull", [xy[0], "''"]], xy[1]]]
+
+        def _m(x):
+            return ["notEquals", [["positionCaseInsensitive", ["message", u"'{}'".format(x)]], 0]]
+
+        tests = [
+            ("foo bar baz OR fizz buzz bizz", ["or", [_m("foo bar baz"), _m("fizz buzz bizz")]]),
+            (
+                "a:b (c:d OR e:f) g:h i:j OR k:l",
+                [
+                    "or",
+                    [
+                        [
+                            "and",
+                            [
+                                _eq("ab"),
+                                [
+                                    "and",
+                                    [
+                                        ["or", [_eq("cd"), _eq("ef")]],
+                                        ["and", [_eq("gh"), _eq("ij")]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        _eq("kl"),
+                    ],
+                ],
+            ),
+            (
+                "a:b OR c:d e:f g:h (i:j OR k:l)",
+                [
+                    "or",
+                    [
+                        _eq("ab"),
+                        [
+                            "and",
+                            [
+                                _eq("cd"),
+                                [
+                                    "and",
+                                    [
+                                        _eq("ef"),
+                                        ["and", [_eq("gh"), ["or", [_eq("ij"), _eq("kl")]]]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ),
+            ("(a:b OR c:d) e:f", ["and", [["or", [_eq("ab"), _eq("cd")]], _eq("ef")]]),
+            (
+                "a:b OR c:d e:f g:h i:j OR k:l",
+                [
+                    "or",
+                    [
+                        _eq("ab"),
+                        [
+                            "or",
+                            [
+                                [
+                                    "and",
+                                    [
+                                        _eq("cd"),
+                                        ["and", [_eq("ef"), ["and", [_eq("gh"), _eq("ij")]]]],
+                                    ],
+                                ],
+                                _eq("kl"),
+                            ],
+                        ],
+                    ],
+                ],
+            ),
+            (
+                "(a:b OR c:d) e:f g:h OR i:j k:l",
+                [
+                    "or",
+                    [
+                        ["and", [["or", [_eq("ab"), _eq("cd")]], ["and", [_eq("ef"), _eq("gh")]]]],
+                        ["and", [_eq("ij"), _eq("kl")]],
+                    ],
+                ],
+            ),
+            (
+                "a:b c:d e:f OR g:h i:j",
+                [
+                    "or",
+                    [
+                        ["and", [_eq("ab"), ["and", [_eq("cd"), _eq("ef")]]]],
+                        ["and", [_eq("gh"), _eq("ij")]],
+                    ],
+                ],
+            ),
+            (
+                "a:b c:d (e:f OR g:h) i:j",
+                [
+                    "and",
+                    [
+                        _eq("ab"),
+                        ["and", [_eq("cd"), ["and", [["or", [_eq("ef"), _eq("gh")]], _eq("ij")]]]],
+                    ],
+                ],
+            ),
+            (
+                "!a:b c:d (e:f OR g:h) i:j",
+                [
+                    "and",
+                    [
+                        _eq("ab"),
+                        ["and", [_eq("cd"), ["and", [["or", [_eq("ef"), _eq("gh")]], _eq("ij")]]]],
+                    ],
+                ],
+            ),
+        ]
+
+        for test in tests:
+            result = get_filter(test[0])
+            assert [[test[1], "=", 1]] == result.conditions, test[0]
+
+    def test_nesting_using_parentheses(self):
+        def _eq(xy):
+            return ["equals", [["ifNull", [xy[0], "''"]], xy[1]]]
+
+        def _m(x):
+            return ["notEquals", [["positionCaseInsensitive", ["message", u"'{}'".format(x)]], 0]]
+
+        tests = [
+            (
+                "(a:b OR (c:d AND (e:f OR (g:h AND e:f))))",
+                [
+                    "or",
+                    [
+                        _eq("ab"),
+                        ["and", [_eq("cd"), ["or", [_eq("ef"), ["and", [_eq("gh"), _eq("ef")]]]]]],
+                    ],
+                ],
+            ),
+            (
+                "(a:b OR c:d) AND (e:f g:h)",
+                ["and", [["or", [_eq("ab"), _eq("cd")]], ["and", [_eq("ef"), _eq("gh")]]]],
+            ),
+        ]
+
+        for test in tests:
+            result = get_filter(test[0])
+            assert [[test[1], "=", 1]] == result.conditions, test[0]
+
+    def test_aggregate_filter_in_conditions(self):
+        def _c(op, val):
+            return [OPERATOR_TO_FUNCTION[op], ["count", val]]
+
+        tests = [
+            ("count():>1 AND count():<=3", ["and", [_c(">", 1), _c("<=", 3)]]),
+            ("count():>1 OR count():<=3", ["or", [_c(">", 1), _c("<=", 3)]]),
+            (
+                "count():>1 OR count():>5 AND count():<=3",
+                ["or", [_c(">", 1), ["and", [_c(">", 5), _c("<=", 3)]]]],
+            ),
+            (
+                "count():>1 AND count():<=3 OR count():>5",
+                ["or", [["and", [_c(">", 1), _c("<=", 3)]], _c(">", 5)]],
+            ),
+            (
+                "(count():>1 OR count():>2) AND count():<=3",
+                ["and", [["or", [_c(">", 1), _c(">", 2)]], _c("<=", 3)]],
+            ),
+            (
+                "(count():>1 AND count():>5) OR count():<=3",
+                ["or", [["and", [_c(">", 1), _c(">", 5)]], _c("<=", 3)]],
+            ),
+        ]
+
+        for test in tests:
+            result = get_filter(test[0])
+            assert [[test[1], "=", 1]] == result.having, test[0]
+
+    def test_aggregate_filter_and_normal_filter_in_condition(self):
+        def _eq(xy):
+            return ["equals", [["ifNull", [xy[0], "''"]], xy[1]]]
+
+        def _c(op, val):
+            return [OPERATOR_TO_FUNCTION[op], ["count", val]]
+
+        tests = [
+            ("count():>1 AND a:b", ["and", [_eq("ab")]], ["and", [_c(">", 1)]]),
+            (
+                "count():>1 AND a:b c:d",
+                ["and", [["and", [_eq("ab"), _eq("cd")]]]],
+                ["and", [_c(">", 1)]],
+            ),
+            (
+                "(a:b OR c:d) count():>1",
+                ["and", [["or", [_eq("ab"), _eq("cd")]]]],
+                ["and", [_c(">", 1)]],
+            ),
+            (
+                "(count():<3 OR count():>10) a:b c:d",
+                ["and", [["and", [_eq("ab"), _eq("cd")]]]],
+                ["and", [["or", [_c("<", 3), _c(">", 10)]]]],
+            ),
+        ]
+
+        for test in tests:
+            result = get_filter(test[0])
+            assert [[test[1], "=", 1]] == result.conditions, "cond: " + test[0]
+            assert [[test[2], "=", 1]] == result.having, "having: " + test[0]
+
+    def test_aggregate_filter_and_normal_filter_in_condition_with_or(self):
         with pytest.raises(InvalidSearchQuery) as error:
-            parse_search_query("undefined is not an object (evaluating 'function.name')") == [
-                SearchFilter(
-                    key=SearchKey(name="message"),
-                    operator="=",
-                    value=SearchValue(
-                        raw_value='undefined is not an object (evaluating "function.name")'
-                    ),
-                )
-            ]
+            get_filter("count():>1 OR a:b")
         assert (
             six.text_type(error.value)
-            == "Parse error at 'ect (evalu' (column 28). This is commonly caused by unmatched parentheses. Enclose any text in double quotes."
+            == "Having an OR between aggregate filters and normal filters is invalid."
         )
+        with pytest.raises(InvalidSearchQuery) as error:
+            get_filter("(count():>1 AND a:b) OR a:b")
+        assert (
+            six.text_type(error.value)
+            == "Having an OR between aggregate filters and normal filters is invalid."
+        )
+        with pytest.raises(InvalidSearchQuery) as error:
+            get_filter("(count():>1 AND a:b) OR (a:b AND count():>2)")
+        assert (
+            six.text_type(error.value)
+            == "Having an OR between aggregate filters and normal filters is invalid."
+        )
+        with pytest.raises(InvalidSearchQuery) as error:
+            get_filter("a:b OR (c:d AND (e:f AND count():>1))")
+        assert (
+            six.text_type(error.value)
+            == "Having an OR between aggregate filters and normal filters is invalid."
+        )
+
+    def test_user_alias_in_conditions(self):
+        def _eq(k, v):
+            return ["equals", ["user.{}".format(k), "{}@example.com".format(v)]]
+
+        def _teq(xy):
+            return ["equals", [["ifNull", [xy[0], "''"]], xy[1]]]
+
+        def _neq(k, v):
+            return [
+                ["equals", [["isNull", ["user.{}".format(k)]], 1]],
+                ["notEquals", ["user.{}".format(k), "{}@example.com".format(v)]],
+            ]
+
+        tests = [
+            (
+                "user:foo@example.com OR user:bar@example.com",
+                [
+                    "or",
+                    [
+                        [
+                            "or",
+                            [
+                                _eq("email", "foo"),
+                                [
+                                    "or",
+                                    [
+                                        _eq("username", "foo"),
+                                        ["or", [_eq("ip", "foo"), _eq("id", "foo")]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            "or",
+                            [
+                                _eq("email", "bar"),
+                                [
+                                    "or",
+                                    [
+                                        _eq("username", "bar"),
+                                        ["or", [_eq("ip", "bar"), _eq("id", "bar")]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ),
+            (
+                "user:foo@example.com AND user:bar@example.com",
+                [
+                    "and",
+                    [
+                        [
+                            "or",
+                            [
+                                _eq("email", "foo"),
+                                [
+                                    "or",
+                                    [
+                                        _eq("username", "foo"),
+                                        ["or", [_eq("ip", "foo"), _eq("id", "foo")]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            "or",
+                            [
+                                _eq("email", "bar"),
+                                [
+                                    "or",
+                                    [
+                                        _eq("username", "bar"),
+                                        ["or", [_eq("ip", "bar"), _eq("id", "bar")]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ),
+            (
+                "(user:foo@example.com OR user:bar@example.com) a:b",
+                [
+                    "and",
+                    [
+                        [
+                            "or",
+                            [
+                                [
+                                    "or",
+                                    [
+                                        _eq("email", "foo"),
+                                        [
+                                            "or",
+                                            [
+                                                _eq("username", "foo"),
+                                                ["or", [_eq("ip", "foo"), _eq("id", "foo")]],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                                [
+                                    "or",
+                                    [
+                                        _eq("email", "bar"),
+                                        [
+                                            "or",
+                                            [
+                                                _eq("username", "bar"),
+                                                ["or", [_eq("ip", "bar"), _eq("id", "bar")]],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        _teq("ab"),
+                    ],
+                ],
+            ),
+            (
+                "(user:foo@example.com OR user:bar@example.com) a:b",
+                [
+                    "and",
+                    [
+                        [
+                            "or",
+                            [
+                                [
+                                    "or",
+                                    [
+                                        _eq("email", "foo"),
+                                        [
+                                            "or",
+                                            [
+                                                _eq("username", "foo"),
+                                                ["or", [_eq("ip", "foo"), _eq("id", "foo")]],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                                [
+                                    "or",
+                                    [
+                                        _eq("email", "bar"),
+                                        [
+                                            "or",
+                                            [
+                                                _eq("username", "bar"),
+                                                ["or", [_eq("ip", "bar"), _eq("id", "bar")]],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        _teq("ab"),
+                    ],
+                ],
+            ),
+            (
+                "!user:foo@example.com OR !user:bar@example.com",
+                [
+                    "or",
+                    [
+                        [
+                            "and",
+                            [
+                                ["or", _neq("email", "foo")],
+                                [
+                                    "and",
+                                    [
+                                        ["or", _neq("username", "foo")],
+                                        [
+                                            "and",
+                                            [["or", _neq("ip", "foo")], ["or", _neq("id", "foo")]],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            "and",
+                            [
+                                ["or", _neq("email", "bar")],
+                                [
+                                    "and",
+                                    [
+                                        ["or", _neq("username", "bar")],
+                                        [
+                                            "and",
+                                            [["or", _neq("ip", "bar")], ["or", _neq("id", "bar")]],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ),
+            (
+                "!user:foo@example.com AND !user:bar@example.com",
+                [
+                    "and",
+                    [
+                        [
+                            "and",
+                            [
+                                ["or", _neq("email", "foo")],
+                                [
+                                    "and",
+                                    [
+                                        ["or", _neq("username", "foo")],
+                                        [
+                                            "and",
+                                            [["or", _neq("ip", "foo")], ["or", _neq("id", "foo")]],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            "and",
+                            [
+                                ["or", _neq("email", "bar")],
+                                [
+                                    "and",
+                                    [
+                                        ["or", _neq("username", "bar")],
+                                        [
+                                            "and",
+                                            [["or", _neq("ip", "bar")], ["or", _neq("id", "bar")]],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ),
+            (
+                "(user:foo@example.com OR !user:bar@example.com) AND user:foobar@example.com ",
+                [
+                    "and",
+                    [
+                        [
+                            "or",
+                            [
+                                [
+                                    "or",
+                                    [
+                                        _eq("email", "foo"),
+                                        [
+                                            "or",
+                                            [
+                                                _eq("username", "foo"),
+                                                ["or", [_eq("ip", "foo"), _eq("id", "foo")]],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                                [
+                                    "and",
+                                    [
+                                        ["or", _neq("email", "bar")],
+                                        [
+                                            "and",
+                                            [
+                                                ["or", _neq("username", "bar")],
+                                                [
+                                                    "and",
+                                                    [
+                                                        ["or", _neq("ip", "bar")],
+                                                        ["or", _neq("id", "bar")],
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            "or",
+                            [
+                                _eq("email", "foobar"),
+                                [
+                                    "or",
+                                    [
+                                        _eq("username", "foobar"),
+                                        ["or", [_eq("ip", "foobar"), _eq("id", "foobar")]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ),
+        ]
+
+        for test in tests:
+            result = get_filter(test[0])
+            assert [[test[1], "=", 1]] == result.conditions, "cond: " + test[0]
+
+    def test_project_in_condition_filters(self):
+        project1 = self.create_project()
+        project2 = self.create_project()
+        project3 = self.create_project()
+        tests = [
+            (
+                "project:{} OR project:{}".format(project1.slug, project2.slug),
+                [[["or", [["equals", ["project_id", 2]], ["equals", ["project_id", 3]]]], "=", 1]],
+                [project1.id, project2.id],
+            ),
+        ]
+
+        for test in tests:
+            result = get_filter(
+                test[0],
+                params={
+                    "organization_id": self.organization.id,
+                    "project_id": [project1.id, project2.id, project3.id],
+                },
+            )
+            assert test[1] == result.conditions
+            assert test[2] == result.project_ids
+        # Combine a bunch of these conditions with OR/AND/() to make sure we end up
+        # with the correct results at the end
+        # P OR P OR P -> conditions: None, project_ids = (P, P, P)
+        # (P OR P) AND C -> conditions: C, project_ids = (P, P)
+        # etc.
+
+    def test_group_id_in_condition_filters(self):
+        # Make sure group_id conditions are properly combined
+        # Basically copy project checks from above
+        pass
+
+    def test_invalid_conditional_filters(self):
+        # Invalid queries: OR C fail, C OR AND C fail, C AND C AND fail, AND fail
+        pass
 
 
 class GetSnubaQueryArgsTest(TestCase):
@@ -1663,18 +1881,6 @@ class GetSnubaQueryArgsTest(TestCase):
     def test_function_with_date_arguments(self):
         result = get_filter("last_seen():2020-04-01T19:34:52+00:00")
         assert result.having == [["last_seen", "=", 1585769692]]
-
-    def test_boolean_logic(self):
-        result = get_filter("title:a OR title:b")
-        print("RESULT", result.conditions)
-        assert False
-
-    # Copy all the different paren/boolean tests from above here
-    # Also need some having tests: make sure having can only be combined with AND
-    # - if having buried in logic statement that includes an OR, reject
-    # - multiple having conditions only work with OR
-    # What happens when you combine a:b c:d OR e:f g:h? Are there implicit ANDs?
-    # make sure having + condition returns expected results
 
     def test_function_with_date_negation(self):
         result = get_filter("!last_seen():2020-04-01T19:34:52+00:00")

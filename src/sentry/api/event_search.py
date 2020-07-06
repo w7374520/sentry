@@ -114,7 +114,6 @@ event_search_grammar = Grammar(
     r"""
 search               = (boolean_operator / paren_term / search_term)*
 boolean_operator     = spaces (or_operator / and_operator) spaces
-# boolean_term         = (paren_term / search_term)+ space? (boolean_operator space? (paren_term / search_term) space?)+
 paren_term           = spaces open_paren space? (paren_term / boolean_operator / search_term)+ space? closed_paren spaces
 search_term          = key_val_term / quoted_raw_search / raw_search
 key_val_term         = spaces (tag_filter / time_filter / rel_time_filter / specific_time_filter / duration_filter
@@ -148,11 +147,10 @@ is_filter            = negation? "is" sep search_value
 tag_filter           = negation? "tags[" search_key "]" sep search_value
 
 aggregate_key        = key space? open_paren space? function_arg* space? closed_paren
-function_key         = key space? open_paren space? closed_paren
 search_key           = key / quoted_key
 search_value         = quoted_value / value
 value                = ~r"[^()\s]*"
-numeric_value        = ~r"[-]?[0-9\.]+(?=\s|$)"
+numeric_value        = ~r"[-]?[0-9\.]+(?=\s|\)|$)"
 quoted_value         = ~r"\"((?:[^\"]|(?<=\\)[\"])*)?\""s
 key                  = ~r"[a-zA-Z0-9_\.-]+"
 function_arg         = space? key? comma? space?
@@ -167,7 +165,6 @@ duration_format      = ~r"([0-9\.]+)(ms|s|min|m|hr|h|day|d|wk|w)(?=\s|$)"
 # NOTE: the order in which these operators are listed matters
 # because for example, if < comes before <= it will match that
 # even if the operator is <=
-# boolean_operator     = spacesor_operator / and_operator
 or_operator          = ~r"OR"i
 and_operator         = ~r"AND"i
 operator             = ">=" / "<=" / ">" / "<" / "=" / "!="
@@ -371,69 +368,14 @@ class SearchVisitor(NodeVisitor):
             return None
         return SearchFilter(SearchKey("message"), "=", SearchValue(value))
 
-    # def visit_boolean_expression(self, node, children):
-    #     children = self.flatten(children)
-    #     return children
-
-    # def visit_boolean_term(self, node, children):
-    #     def find_next_operator(children, start, end, operator):
-    #         for index in range(start, end):
-    #             if children[index] == operator:
-    #                 return index
-    #         return None
-
-    #     def build_boolean_tree_branch(children, start, end, operator):
-    #         index = find_next_operator(children, start, end, operator)
-    #         print("BRANCH", start, end, operator, index)
-    #         if index is None:
-    #             return None
-    #         left = build_boolean_tree(children, start, index)
-    #         right = build_boolean_tree(children, index + 1, end)
-    #         return SearchBoolean(left, children[index], right)
-
-    #     def build_boolean_tree(children, start, end):
-    #         if end - start == 1:
-    #             return children[start]
-
-    #         print("tree", start, end)
-    #         result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_OR)
-    #         print("FOUND OR!", result)
-    #         if result is None:
-    #             result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_AND)
-
-    #         return result
-
-    #     children = self.flatten(children)
-    #     children = self.remove_optional_nodes(children)
-    #     children = self.remove_space(children)
-
-    #     # If the expression has any implicit ANDs, add them in to the children so the parser
-    #     # correctly groups them
-    #     new_children = []
-    #     prev = None
-    #     for c in children:
-    #         if prev and not SearchBoolean.is_operator(prev) and not SearchBoolean.is_operator(c):
-    #             new_children.append(SearchBoolean.BOOLEAN_AND)
-
-    #         # if isinstance(c, list):
-    #         #     new_children.extend(c)
-    #         # else:
-    #         new_children.append(c)
-    #         prev = c
-
-    #     for i, c in enumerate(new_children):
-    #         print("C", i, c)
-
-    #     return [build_boolean_tree(new_children, 0, len(new_children))]
-
     def visit_paren_term(self, node, children):
-        children = self.flatten(children)
-        children = self.remove_optional_nodes(children)
-        children = self.remove_space(children)
-        for c in self.flatten(children[1]):
-            print("C", c)
+        if not self.allow_boolean:
+            raise InvalidSearchQuery(
+                "Grouping filters using parentheses () is not supported in this search"
+            )
+
+        children = self.remove_space(self.remove_optional_nodes(self.flatten(children)))
         return ParenExpression(self.flatten(children[1]))
-        # return self.flatten(children[1])
 
     def visit_numeric_filter(self, node, children):
         (search_key, _, operator, search_value) = children
@@ -969,38 +911,59 @@ def format_search_filter(term, params):
     return conditions, project_to_filter, group_ids
 
 
+def convert_condition_to_function(cond):
+    function = OPERATOR_TO_FUNCTION.get(cond[1])
+    if not function:
+        # It's hard to make this error more specific without exposing internals to the end user
+        raise InvalidSearchQuery(u"found invalid condition operator".format(cond[1]))
+
+    return [function, [cond[0], cond[2]]]
+
+
+def convert_array_to_tree(operator, terms):
+    if len(terms) <= 2:
+        return [operator, terms]
+
+    return [operator, [terms[0], convert_array_to_tree(operator, terms[1:])]]
+
+
+def is_condition(term):
+    return isinstance(term, (tuple, list)) and len(term) == 3 and term[1] in OPERATOR_TO_FUNCTION
+
+
 def convert_snuba_condition_to_function(term, params=None):
     if isinstance(term, ParenExpression):
         return convert_search_boolean_to_snuba_query(term.children, params)
 
     group_ids = []
     projects_to_filter = []
-    elif isinstance(term, SearchFilter):
+    if isinstance(term, SearchFilter):
         conditions, project_to_filter, group_ids = format_search_filter(term, params)
         projects_to_filter = [project_to_filter] if project_to_filter else []
-        groups_ids = group_ids if group_ids else []
+        group_ids = group_ids if group_ids else []
         if conditions:
+            conditions_to_and = []
+            for cond in conditions:
+                if is_condition(cond):
+                    conditions_to_and.append(convert_condition_to_function(cond))
+                else:
+                    conditions_to_and.append(
+                        convert_array_to_tree(
+                            SNUBA_OR, [convert_condition_to_function(c) for c in cond]
+                        )
+                    )
 
+            condition_tree = None
+            if len(conditions_to_and) == 1:
+                condition_tree = conditions_to_and[0]
+            elif len(conditions_to_and) > 1:
+                condition_tree = convert_array_to_tree(SNUBA_AND, conditions_to_and)
+            return condition_tree, None, projects_to_filter, group_ids
+    elif isinstance(term, AggregateFilter):
+        converted_filter = convert_aggregate_filter_to_snuba_query(term, params)
+        return None, convert_condition_to_function(converted_filter), projects_to_filter, group_ids
 
-
-    # base case (1 term) ->
-    #   If it's a paren, recurse,
-    #   elif search filter
-    #       format using fsf
-    #       convert to function e.g. equals(x, y)
-    #       return function
-    #   elif aggregate filter
-    #       if we're in an OR, bail out
-    #       convert_aggregate_filter_to_snuba_query
-    #       convert to function e.g. equals(x, y)
-
-
-    # Can be an empty array (a group_id filter returns no condition, just adds to the group_id array)
-    # Can be an array containing a single condition [[x, "=", y]] -> ["equals", [x, y]]
-    # Can be an array of conditions [[x, "=", y], [a, "!=", b]] -> ["and", [["equals", [x, y]], ["notEquals", [a, b]]]]
-    # Can be an array of an array of conditions [[[a, "=", b], [c, "=", d]]] -> ["or", [["equals", [a, b]], ["notEquals", [c, d]]]]
-
-    return "equals"
+    return None, None, projects_to_filter, group_ids
 
 
 def convert_search_boolean_to_snuba_query(terms, params=None):
@@ -1025,55 +988,55 @@ def convert_search_boolean_to_snuba_query(terms, params=None):
         if term != SearchBoolean.BOOLEAN_AND:
             new_terms.append(term)
         prev = term
-
     if SearchBoolean.is_operator(term):
         raise InvalidSearchQuery(u"condition is missing on right side of {}".format(term))
+    terms = new_terms
 
     # We put precedence on AND, which sort of counter-intuitevely means we have to split the query
     # on ORs first, so the ANDs are grouped together. Search through the query for ORs and split the
     # query on each OR.
-    parts = []
-    part = []
-    for term in terms:
-        if term == SearchBoolean.BOOLEAN_OR:
-            parts.append(part)
-            part = []
-        else:
-            part.append(term)
-    parts.append(part)
-
-    # We found an OR, recurse on the different groups
-    if len(parts) > 1:
+    # We want to maintain a binary tree, so split the terms on the first OR we can find and recurse on
+    # the two sides. If there is no OR, split the first element out to AND
+    index = None
+    lhs, rhs = None, None
+    operator = None
+    try:
+        index = terms.index(SearchBoolean.BOOLEAN_OR)
+        lhs, rhs = terms[:index], terms[index + 1 :]
         operator = SNUBA_OR
-        terms = parts
-        recurse_function = convert_search_boolean_to_snuba_query
-    else:  # Found an AND, format the individual terms
+    except Exception:
+        lhs, rhs = terms[:1], terms[1:]
         operator = SNUBA_AND
-        terms = parts[0]
-        recurse_function = convert_snuba_condition_to_function
 
-    projects_to_filter = []
-    group_ids = []
-    havings = []
-    conditions = []
-    for term in terms:
-        condition, having, projects_to_filter, group_ids = recurse_function(term, params)
-        if condition:
-            conditions.append(condition)
-        if having:
-            havings.append(having)
+    (
+        lhs_condition,
+        lhs_having,
+        projects_to_filter,
+        group_ids,
+    ) = convert_search_boolean_to_snuba_query(lhs, params)
+    (
+        rhs_condition,
+        rhs_having,
+        rhs_projects_to_filter,
+        rhs_group_ids,
+    ) = convert_search_boolean_to_snuba_query(rhs, params)
 
-        projects_to_filter.extend(projects_to_filter)
-        group_ids.extend(group_ids)
+    projects_to_filter.extend(rhs_projects_to_filter)
+    group_ids.extend(rhs_group_ids)
 
-    # It's not possible to OR conditions (where clause) and havings (having clause)
-    if operator == SNUBA_OR and conditions and havings:
+    if operator == SNUBA_OR and (lhs_condition or rhs_condition) and (lhs_having or rhs_having):
         raise InvalidSearchQuery(
-            u"having an OR between aggregate filters and normal filters is invalid"
+            u"Having an OR between aggregate filters and normal filters is invalid."
         )
 
-    condition = [operator, conditions] if conditions else None
-    having = [operator, havings] if havings else None
+    condition, having = None, None
+    if lhs_condition or rhs_condition:
+        args = filter(None, [lhs_condition, rhs_condition])
+        condition = [operator, args] if args else None
+    if lhs_having or rhs_having:
+        args = filter(None, [lhs_having, rhs_having])
+        having = [operator, args] if args else None
+
     return condition, having, projects_to_filter, group_ids
 
 
@@ -1101,36 +1064,35 @@ def get_filter(query=None, params=None):
         "group_ids": [],
     }
 
-    project_to_filter = None
+    projects_to_filter = []
     if any(
         isinstance(term, ParenExpression) or SearchBoolean.is_operator(term)
         for term in parsed_terms
     ):
         # TODO evanh: We can remove all top level ANDs and extend the conditions/having to
         # avoid unnecesary nesting, e.g. [["and", [["and", [a, b]], ["and", [c, d]]]]] -> [a, b, c, d]
-        condition, having, found_project_to_filter, group_ids = format_search_boolean(
-            parsed_terms, params
-        )
-        if len(conditions) > 0:
-            kwargs["conditions"].append(condition)
-        if len(having) > 0:
-            kwargs["having"].append(having)
-        if found_project_to_filter:
-            project_to_filter = found_project_to_filter
+        (
+            condition,
+            having,
+            found_projects_to_filter,
+            group_ids,
+        ) = convert_search_boolean_to_snuba_query(parsed_terms, params)
+        if condition:
+            kwargs["conditions"].append([condition, "=", 1])
+        if having:
+            kwargs["having"].append([having, "=", 1])
+        if found_projects_to_filter:
+            projects_to_filter = found_projects_to_filter
         if group_ids is not None:
             kwargs["group_ids"].extend(group_ids)
     else:
         for term in parsed_terms:
             if isinstance(term, SearchFilter):
-                conditions, found_project_to_filter, group_ids = format_search_filter(
-                    term, params
-                )
+                conditions, found_project_to_filter, group_ids = format_search_filter(term, params)
                 if len(conditions) > 0:
                     kwargs["conditions"].extend(conditions)
-                if len(having) > 0:
-                    kwargs["having"].extend(having)
                 if found_project_to_filter:
-                    project_to_filter = found_project_to_filter
+                    projects_to_filter = [found_project_to_filter]
                 if group_ids is not None:
                     kwargs["group_ids"].extend(group_ids)
             elif isinstance(term, AggregateFilter):
@@ -1146,8 +1108,8 @@ def get_filter(query=None, params=None):
             kwargs[key] = params.get(key, None)
         # OrganizationEndpoint.get_filter() uses project_id, but eventstore.Filter uses project_ids
         if "project_id" in params:
-            if project_to_filter:
-                kwargs["project_ids"] = [project_to_filter]
+            if projects_to_filter:
+                kwargs["project_ids"] = projects_to_filter
             else:
                 kwargs["project_ids"] = params["project_id"]
         if "environment" in params:

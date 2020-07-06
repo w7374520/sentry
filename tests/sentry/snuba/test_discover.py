@@ -280,6 +280,37 @@ class QueryIntegrationTest(SnubaTestCase, TestCase):
         assert data[0]["id"] == self.event.event_id
         assert data[0]["message"] == self.event.message
 
+    def test_conditional_filter(self):
+        project2 = self.create_project(organization=self.organization)
+        project3 = self.create_project(organization=self.organization)
+
+        self.store_event(
+            data={"message": "hello", "timestamp": iso_format(before_now(minutes=1))},
+            project_id=project2.id,
+        )
+        self.store_event(
+            data={"message": "hello", "timestamp": iso_format(before_now(minutes=1))},
+            project_id=project3.id,
+        )
+
+        result = discover.query(
+            selected_columns=["project", "message"],
+            query="project:{} OR project:{}".format(self.project.slug, project2.slug),
+            params={"project_id": [self.project.id, project2.id]},
+            orderby="project",
+        )
+
+        data = result["data"]
+        assert len(data) == 2
+        assert data[0]["project"] == self.project.slug
+        assert data[1]["project"] == project2.slug
+
+    # TEST CASES
+    # Need to dig into the resolvers a bit to make sure that it's correctly handling nesting/grouping
+    # Should test this with stats/facets as well
+    # This might be a good place for some aggregate stuff as well, since some of those functions
+    # get refined here
+
     def test_reference_event(self):
         two_minutes = before_now(minutes=2)
         five_minutes = before_now(minutes=5)

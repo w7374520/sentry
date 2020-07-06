@@ -575,7 +575,6 @@ def bulk_raw_query(snuba_param_list, referrer=None):
         try:
             with timer("snuba_query"):
                 body = json.dumps(query_params)
-                print("SNUBA", body)
                 referrer = headers.get("referer", "<unknown>")
                 with thread_hub.start_span(
                     op="snuba", description=u"query {}".format(referrer)
@@ -611,7 +610,6 @@ def bulk_raw_query(snuba_param_list, referrer=None):
     for response, _, reverse in query_results:
         try:
             body = json.loads(response.data)
-            print("RESPONSE", body)
         except ValueError:
             raise UnexpectedResponseError(
                 u"Could not decode JSON response: {}".format(response.data)
@@ -754,16 +752,29 @@ def resolve_condition(cond, column_resolver):
                                        current dataset.
     """
     index = get_function_index(cond)
-    print("INDEX", index, cond)
     if index is not None:
         # IN conditions are detected as a function but aren't really.
         if cond[index] == "IN":
             cond[0] = column_resolver(cond[0])
             return cond
+        elif cond[index] in [
+            "equals",
+            "notEquals",
+            "greater",
+            "less",
+            "greaterOrEquals",
+            "lessOrEquals",
+        ]:
+            func_args = cond[index + 1]
+            if isinstance(func_args[0], (list, tuple)):
+                func_args[0] = resolve_condition(func_args[0], column_resolver)
+            else:
+                func_args[0] = column_resolver(func_args[0])
+            cond[index + 1] = func_args
+            return cond
 
         func_args = cond[index + 1]
         for (i, arg) in enumerate(func_args):
-            print("ARGS", i, arg)
             # Nested function
             if isinstance(arg, (list, tuple)):
                 func_args[i] = resolve_condition(arg, column_resolver)
