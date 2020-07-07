@@ -979,17 +979,23 @@ def convert_search_boolean_to_snuba_query(terms, params=None):
         if prev:
             if SearchBoolean.is_operator(prev) and SearchBoolean.is_operator(term):
                 raise InvalidSearchQuery(
-                    u"cannot have two conditions next to each other: {} {}".format(prev, term)
+                    u"Missing condition in between two condition operators: '{} {}'".format(
+                        prev, term
+                    )
                 )
         else:
             if SearchBoolean.is_operator(term):
-                raise InvalidSearchQuery(u"condition is missing on left side of {}".format(term))
+                raise InvalidSearchQuery(
+                    u"Condition is missing on the left side of '{}' operator".format(term)
+                )
 
         if term != SearchBoolean.BOOLEAN_AND:
             new_terms.append(term)
         prev = term
     if SearchBoolean.is_operator(term):
-        raise InvalidSearchQuery(u"condition is missing on right side of {}".format(term))
+        raise InvalidSearchQuery(
+            u"Condition is missing on the right side of '{}' operator".format(term)
+        )
     terms = new_terms
 
     # We put precedence on AND, which sort of counter-intuitevely means we have to split the query

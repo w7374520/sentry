@@ -779,7 +779,6 @@ class ParseBooleanSearchQueryTest(TestCase):
 
     def test_simple(self):
         result = get_filter("user.email:foo@example.com OR user.email:bar@example.com")
-        print("RES", result.conditions)
         assert result.conditions == [[["or", [self.term1, self.term2]], "=", 1]]
 
         result = get_filter("user.email:foo@example.com AND user.email:bar@example.com")
@@ -793,10 +792,10 @@ class ParseBooleanSearchQueryTest(TestCase):
         result = get_filter(
             "user.email:foo@example.com OR user.email:bar@example.com AND user.email:foobar@example.com"
         )
-        print("RESULT", result.conditions)
         assert result.conditions == [
             [["or", [self.term1, ["and", [self.term2, self.term3]]]], "=", 1]
         ]
+
         result = get_filter(
             "user.email:foo@example.com AND user.email:bar@example.com OR user.email:foobar@example.com"
         )
@@ -989,6 +988,9 @@ class ParseBooleanSearchQueryTest(TestCase):
         def _eq(xy):
             return ["equals", [["ifNull", [xy[0], "''"]], xy[1]]]
 
+        def _neq(xy):
+            return ["notEquals", [["ifNull", [xy[0], "''"]], xy[1]]]
+
         def _m(x):
             return ["notEquals", [["positionCaseInsensitive", ["message", u"'{}'".format(x)]], 0]]
 
@@ -1096,7 +1098,7 @@ class ParseBooleanSearchQueryTest(TestCase):
                 [
                     "and",
                     [
-                        _eq("ab"),
+                        _neq("ab"),
                         ["and", [_eq("cd"), ["and", [["or", [_eq("ef"), _eq("gh")]], _eq("ij")]]]],
                     ],
                 ],
@@ -1670,8 +1672,25 @@ class ParseBooleanSearchQueryTest(TestCase):
             assert test[2] == result.group_ids, test[0]
 
     def test_invalid_conditional_filters(self):
-        # Invalid queries: OR C fail, C OR AND C fail, C AND C AND fail, AND fail
-        pass
+        with self.assertRaisesRegexp(
+            InvalidSearchQuery, "Condition is missing on the left side of 'OR' operator"
+        ):
+            get_filter("OR a:b")
+
+        with self.assertRaisesRegexp(
+            InvalidSearchQuery, "Missing condition in between two condition operators: 'OR AND'"
+        ):
+            get_filter("a:b Or And c:d")
+
+        with self.assertRaisesRegexp(
+            InvalidSearchQuery, "Condition is missing on the right side of 'AND' operator"
+        ):
+            get_filter("a:b AND c:d AND")
+
+        with self.assertRaisesRegexp(
+            InvalidSearchQuery, "Condition is missing on the left side of 'OR' operator"
+        ):
+            get_filter("(OR a:b) AND c:d")
 
 
 class GetSnubaQueryArgsTest(TestCase):
