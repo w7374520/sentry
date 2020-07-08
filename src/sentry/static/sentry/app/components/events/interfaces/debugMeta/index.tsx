@@ -30,6 +30,7 @@ import {getFileName} from './utils';
 
 const MIN_FILTER_LEN = 3;
 const DEFAULT_CLIP_HEIGHT = 560;
+const PANEL_MAX_HEIGHT = 600;
 
 type Image = React.ComponentProps<typeof DebugImage>['image'];
 
@@ -313,7 +314,9 @@ class DebugMeta extends React.PureComponent<Props, State> {
               this.listRef = el;
             }}
             deferredMeasurementCache={cache}
-            height={panelBodyHeight}
+            height={
+              panelBodyHeight > PANEL_MAX_HEIGHT ? PANEL_MAX_HEIGHT : panelBodyHeight
+            }
             overscanRowCount={5}
             rowCount={filteredImages.length}
             rowHeight={cache.rowHeight}
@@ -430,7 +433,7 @@ const StyledEventDataSection = styled(EventDataSection)`
 
 const DebugImagesPanel = styled(Panel)`
   margin-bottom: ${space(1)};
-  max-height: 600px;
+  max-height: ${PANEL_MAX_HEIGHT}px;
   overflow-y: auto;
   overflow-x: hidden;
 `;
