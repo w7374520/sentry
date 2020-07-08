@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import ProjectLabel from 'app/components/projectLabel';
 
 export default {
-  title: 'Deprecated|ProjectLabel',
+  title: 'Deprecated/ProjectLabel',
 };
 
 export const Default = withInfo('Do not use this, use IdBadge instead')(() => {

@@ -5,7 +5,7 @@ import styled from '@emotion/styled';
 import theme from 'app/utils/theme';
 
 export default {
-  title: 'Style|Colors',
+  title: 'Style/Colors',
 };
 
 export const Default = withInfo('Top level colors')(() => {

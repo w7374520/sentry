@@ -22,7 +22,7 @@ const WideButton = styled(Button)`
 `;
 
 export default {
-  title: 'UI|Buttons',
+  title: 'UI/Buttons',
 };
 
 export const Overview = withInfo({

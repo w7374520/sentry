@@ -5,7 +5,7 @@ import FlowLayout from 'app/components/flowLayout';
 import SpreadLayout from 'app/components/spreadLayout';
 
 export default {
-  title: 'Deprecated|ComponentLayouts/FlowLayout',
+  title: 'Deprecated/ComponentLayouts/FlowLayout',
 };
 
 export const Row = withInfo('Horizontal row with vertical centering')(() => (

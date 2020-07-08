@@ -5,7 +5,7 @@ import Tooltip from 'app/components/tooltip';
 import Tag from 'app/views/settings/components/tag';
 
 export default {
-  title: 'UI|Tags',
+  title: 'UI/Tags',
 };
 
 export const Default = withInfo(

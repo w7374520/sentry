@@ -9,7 +9,7 @@ const StyledPlatformIcon = styled(PlatformIcon)`
 `;
 
 export default {
-  title: 'Style|Icons',
+  title: 'Style/Icons',
 };
 
 export const _PlatformIcon = withInfo('Scalable platform and framework icons')(() => (

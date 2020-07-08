@@ -5,7 +5,7 @@ import {boolean} from '@storybook/addon-knobs';
 import Well from 'app/components/well';
 
 export default {
-  title: 'UI|Well',
+  title: 'UI/Well',
 };
 
 export const _Well = withInfo('Well is a container that adds background and padding')(

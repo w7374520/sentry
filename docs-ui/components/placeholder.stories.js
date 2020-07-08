@@ -5,7 +5,7 @@ import {text, number} from '@storybook/addon-knobs';
 import Placeholder from 'app/components/placeholder';
 
 export default {
-  title: 'UI|Loaders/Placeholder',
+  title: 'UI/Loaders/Placeholder',
 };
 
 export const Default = withInfo(

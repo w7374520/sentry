@@ -12,7 +12,7 @@ import {
 import Field from 'app/views/settings/components/forms/field';
 
 export default {
-  title: 'UI|Panels',
+  title: 'UI/Panels',
 };
 
 export const BasicPanel = withInfo({

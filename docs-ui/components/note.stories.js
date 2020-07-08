@@ -18,7 +18,7 @@ const user = {
 ConfigStore.set('user', {...user, isSuperuser: true, options: {}});
 
 export default {
-  title: 'UI|Activity/Note',
+  title: 'UI/Activity/Note',
 };
 
 export const Default = withInfo(

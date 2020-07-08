@@ -5,7 +5,7 @@ import {withInfo} from '@storybook/addon-info';
 import LinkWithConfirmation from 'app/components/links/linkWithConfirmation';
 
 export default {
-  title: 'UI|Confirm',
+  title: 'UI/Confirm',
 };
 
 export const __LinkWithConfirmation = withInfo(

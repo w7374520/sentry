@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import MutedBox from 'app/components/mutedBox';
 
 export default {
-  title: 'UI|Muted Box',
+  title: 'UI/Muted Box',
 };
 
 export const Default = withInfo('Default')(() => <MutedBox statusDetails={{}} />);

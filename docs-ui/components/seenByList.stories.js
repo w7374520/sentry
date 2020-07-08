@@ -11,7 +11,7 @@ const USER = {
 };
 
 export default {
-  title: 'UI|SeenByList',
+  title: 'UI/SeenByList',
 };
 
 export const Default = withInfo(

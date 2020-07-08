@@ -5,7 +5,7 @@ import {withInfo} from '@storybook/addon-info';
 import ContextData from 'app/components/contextData';
 
 export default {
-  title: 'UI|ContextData',
+  title: 'UI/ContextData',
 };
 
 export const Strings = withInfo('Default')(() => (

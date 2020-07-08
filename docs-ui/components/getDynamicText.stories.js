@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import getDynamicText from 'app/utils/getDynamicText';
 
 export default {
-  title: 'Utility|getDynamicText',
+  title: 'Utility/getDynamicText',
 };
 
 export const GetDynamicText = withInfo(

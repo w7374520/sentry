@@ -5,7 +5,7 @@ import {withInfo} from '@storybook/addon-info';
 import ClippedBox from 'app/components/clippedBox';
 
 export default {
-  title: 'UI|ClippedBox',
+  title: 'UI/ClippedBox',
 };
 
 export const Default = withInfo(

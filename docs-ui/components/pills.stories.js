@@ -5,7 +5,7 @@ import Pills from 'app/components/pills';
 import Pill from 'app/components/pill';
 
 export default {
-  title: 'UI|Pills',
+  title: 'UI/Pills',
 };
 
 export const All = withInfo('When you have key/value data but are tight on space.')(

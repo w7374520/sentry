@@ -8,7 +8,7 @@ import NumberDragControl from 'app/components/numberDragControl';
 const onChange = action('onChange');
 
 export default {
-  title: 'Forms|Controls',
+  title: 'Forms/Controls',
 };
 
 export const _NumberDragControl = () => (

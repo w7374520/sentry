@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import LoadingIndicator from 'app/components/loadingIndicator';
 
 export default {
-  title: 'UI|Loaders/LoadingIndicator',
+  title: 'UI/Loaders/LoadingIndicator',
 };
 
 export const All = withInfo('Loading indicators. Triangle has negative margins.')(() => (

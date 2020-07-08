@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import FeatureDisabled from 'app/components/acl/featureDisabled';
 
 export default {
-  title: 'UI|FeatureDisabled',
+  title: 'UI/FeatureDisabled',
 };
 
 export const BasicStyle = withInfo('A disabled feature component')(() => (

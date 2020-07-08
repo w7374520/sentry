@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import SimilarSpectrum from 'app/components/similarSpectrum';
 
 export default {
-  title: 'Other|SimilarSpectrum',
+  title: 'Other/SimilarSpectrum',
 };
 
 export const _SimilarSpectrum = withInfo(

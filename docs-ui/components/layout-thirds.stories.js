@@ -24,7 +24,7 @@ const crumbs = [
 ];
 
 export default {
-  title: 'Layouts|Thirds',
+  title: 'Layouts/Thirds',
 };
 
 export const _6633Layout = withInfo('Two column layout with header & sidebar')(() => (

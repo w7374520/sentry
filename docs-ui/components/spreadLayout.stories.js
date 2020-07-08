@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import SpreadLayout from 'app/components/spreadLayout';
 
 export default {
-  title: 'Deprecated|ComponentLayouts/SpreadLayout',
+  title: 'Deprecated/ComponentLayouts/SpreadLayout',
 };
 
 export const Default = withInfo(

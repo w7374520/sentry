@@ -6,7 +6,7 @@ import QuestionTooltip from 'app/components/questionTooltip';
 import theme from 'app/utils/theme';
 
 export default {
-  title: 'UI|QuestionTooltip',
+  title: 'UI/QuestionTooltip',
 };
 
 export const _QuestionTooltip = withInfo({

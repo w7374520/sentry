@@ -108,7 +108,7 @@ const target = `TypeError: Cannot read property 'id' of undefined
   at ReactCompositeComponentWrapper.updateComponent(~/react/lib/ReactCompositeComponent.js:642:0)`;
 
 export default {
-  title: 'Other|SplitDiff',
+  title: 'Other/SplitDiff',
 };
 
 export const _SplitDiff = withInfo(

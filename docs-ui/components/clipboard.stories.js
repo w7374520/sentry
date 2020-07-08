@@ -5,7 +5,7 @@ import {withInfo} from '@storybook/addon-info';
 import Clipboard from 'app/components/clipboard';
 
 export default {
-  title: 'UI|Clipboard',
+  title: 'UI/Clipboard',
 };
 
 export const Default = withInfo('Copy text to clipboard')(() => (

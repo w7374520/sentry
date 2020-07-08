@@ -18,7 +18,7 @@ import TextField from 'app/views/settings/components/forms/textField';
 import TextareaField from 'app/views/settings/components/forms/textareaField';
 
 export default {
-  title: 'Forms|Fields',
+  title: 'Forms/Fields',
 };
 
 export const _TextField = withInfo({

@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import Qrcode from 'app/components/qrcode';
 
 export default {
-  title: 'UI|Qrcode',
+  title: 'UI/Qrcode',
 };
 
 export const Default = withInfo('Description')(() => (

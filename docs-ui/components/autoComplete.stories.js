@@ -16,7 +16,7 @@ const items = [
 ];
 
 export default {
-  title: 'UI|AutoComplete',
+  title: 'UI/AutoComplete',
 };
 
 export const Input = withInfo('Autocomplete on an input')(() => (

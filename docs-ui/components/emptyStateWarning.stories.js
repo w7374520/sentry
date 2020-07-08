@@ -4,7 +4,7 @@ import {withInfo} from '@storybook/addon-info';
 import EmptyStateWarning from 'app/components/emptyStateWarning';
 
 export default {
-  title: 'UI|EmptyStateWarning',
+  title: 'UI/EmptyStateWarning',
 };
 
 export const Default = withInfo('Default')(() => (

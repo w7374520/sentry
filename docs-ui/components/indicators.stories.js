@@ -12,7 +12,7 @@ import {
 import Button from 'app/components/button';
 
 export default {
-  title: 'UI|Toast Indicators',
+  title: 'UI/Toast Indicators',
 };
 
 export const Static = withInfo('Toast Indicators')(() => {

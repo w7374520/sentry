@@ -6,7 +6,7 @@ import ToolbarHeader from 'app/components/toolbarHeader';
 import SpreadLayout from 'app/components/spreadLayout';
 
 export default {
-  title: 'Deprecated|Toolbar',
+  title: 'Deprecated/Toolbar',
 };
 
 export const Default = withInfo(

@@ -100,7 +100,7 @@ class GridParent extends React.Component {
 }
 
 export default {
-  title: 'UI|GridEditable',
+  title: 'UI/GridEditable',
 };
 
 export const Default = withInfo('Render a simple resizable table')(() => (
