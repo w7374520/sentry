@@ -26,10 +26,9 @@ from sentry.search.utils import (
 )
 from sentry.snuba.dataset import Dataset
 from sentry.utils.dates import to_timestamp
-from sentry.utils.snuba import DATASETS, get_json_type
-from sentry.utils.compat import map
-from sentry.utils.compat import zip
-from sentry.utils.compat import filter
+from sentry.utils.snuba import DATASETS, get_json_type, OPERATOR_TO_FUNCTION, SNUBA_AND, SNUBA_OR
+from sentry.utils.compat import filter, map, zip
+
 
 WILDCARD_CHARS = re.compile(r"[\*]")
 NEGATION_MAP = {
@@ -38,16 +37,6 @@ NEGATION_MAP = {
     "<=": ">",
     ">": "<=",
     ">=": "<",
-}
-SNUBA_OR = "or"
-SNUBA_AND = "and"
-OPERATOR_TO_FUNCTION = {
-    "=": "equals",
-    "!=": "notEquals",
-    ">": "greater",
-    "<": "less",
-    ">=": "greaterOrEquals",
-    "<=": "lessOrEquals",
 }
 
 
@@ -1038,10 +1027,21 @@ def convert_search_boolean_to_snuba_query(terms, params=None):
     condition, having = None, None
     if lhs_condition or rhs_condition:
         args = filter(None, [lhs_condition, rhs_condition])
-        condition = [operator, args] if args else None
+        if not args:
+            condition = None
+        elif len(args) == 1:
+            condition = args[0]
+        else:
+            condition = [operator, args]
+
     if lhs_having or rhs_having:
         args = filter(None, [lhs_having, rhs_having])
-        having = [operator, args] if args else None
+        if not args:
+            having = None
+        elif len(args) == 1:
+            having = args[0]
+        else:
+            having = [operator, args]
 
     return condition, having, projects_to_filter, group_ids
 
